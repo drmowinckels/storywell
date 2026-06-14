@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "audible-storygraph-sync"
+version = "0.1.0a0"
+description = "Sync finished audiobooks from Audible to The StoryGraph."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Athanasia Monika Mowinckel", email = "a.m.mowinckel@psykologi.uio.no" }]
+keywords = ["audible", "storygraph", "audiobooks", "sync"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "audible>=0.10.0",
+  "typer>=0.12",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/drmowinckels/audible-storygraph-sync"
+Issues = "https://github.com/drmowinckels/audible-storygraph-sync/issues"
+
+[project.scripts]
+audible-storygraph-sync = "audible_storygraph_sync.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/audible_storygraph_sync"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
