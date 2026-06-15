@@ -95,5 +95,38 @@ def audible_list(
     console.print(build_table(books))
 
 
+@app.command("storygraph-login")
+def storygraph_login() -> None:
+    """Open a browser to log in to StoryGraph and save the session for syncing."""
+    from .storygraph import StorygraphAuthError, StorygraphDependencyError, login
+
+    console.print("Opening a browser. Log in to StoryGraph, then return here.", style="cyan")
+    try:
+        path = login()
+    except (StorygraphDependencyError, StorygraphAuthError) as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    console.print(f"Saved StoryGraph session to {path}", style="green")
+
+
+@app.command("storygraph-status")
+def storygraph_status() -> None:
+    """Check whether a saved StoryGraph session is still logged in."""
+    from .storygraph import StorygraphDependencyError, is_authenticated
+
+    try:
+        ok = is_authenticated()
+    except StorygraphDependencyError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    if ok:
+        console.print("StoryGraph session is active.", style="green")
+    else:
+        console.print("No active StoryGraph session. Run `storygraph-login`.", style="yellow")
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()
