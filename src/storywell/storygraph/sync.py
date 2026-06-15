@@ -3,18 +3,25 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..models import SourceBook
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
+from .reviews import compose_review, rating_to_stars
 from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
-ConfirmFn = Callable[[SourceBook, MatchResult], "Candidate | None"]
+ConfirmFn = Callable[[Any, MatchResult], "Candidate | None"]
 
 
 class Writer(Protocol):
     def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool: ...
+
+
+class Rater(Protocol):
+    def write_review(
+        self, book_id: str, *, stars_integer: str, stars_decimal: str, explanation: str
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -59,13 +66,11 @@ def _finish_date(book: SourceBook) -> date | None:
     return book.finished_at.date() if book.finished_at else None
 
 
-def resolve_match(
-    book: SourceBook, result: MatchResult, confirm_fn: ConfirmFn | None
-) -> Candidate | None:
+def resolve_match(item: Any, result: MatchResult, confirm_fn: ConfirmFn | None) -> Candidate | None:
     if result.status is MatchStatus.MATCH and result.best is not None:
         return result.best.candidate
     if result.status is MatchStatus.AMBIGUOUS and confirm_fn is not None:
-        return confirm_fn(book, result)
+        return confirm_fn(item, result)
     return None
 
 
@@ -106,6 +111,113 @@ def run_sync(
         if writer.mark_finished(book_id, finished_on):
             store.record(book.key, book_id, finished_on)
             outcome.written.append(book.key)
+        else:
+            outcome.failed.append(book.key)
+
+    return outcome
+
+
+@dataclass(frozen=True)
+class TitleEntry:
+    key: str
+    title: str
+    finish_date: date | None = None
+    author: str = ""
+
+
+def run_title_sync(
+    entries: Iterable[TitleEntry],
+    *,
+    search_fn: SearchFn,
+    writer: Writer,
+    store: SyncStore,
+    confirm_fn: ConfirmFn | None = None,
+    dry_run: bool = False,
+) -> SyncOutcome:
+    """Mark a list of plain titles read (used for a collection's contained books).
+
+    Mirrors run_sync but keys on a caller-supplied ``key`` (contained books have no
+    source id of their own) and searches by the title string.
+    """
+    outcome = SyncOutcome()
+    for entry in entries:
+        if store.is_synced(entry.key, entry.finish_date):
+            outcome.skipped_synced.append(entry.key)
+            continue
+
+        book_id = store.cached_book_id(entry.key)
+        if book_id is None:
+            query = f"{search_title(entry.title)} {entry.author}".strip()
+            result = match_book(entry.title, entry.author, search_fn(query))
+            chosen = resolve_match(entry, result, confirm_fn)
+            if chosen is None:
+                if result.status is MatchStatus.NO_MATCH:
+                    outcome.no_match.append(entry.key)
+                else:
+                    outcome.ambiguous_skipped.append(entry.key)
+                continue
+            book_id = chosen.book_id
+            store.remember_match(entry.key, book_id)
+
+        if dry_run:
+            outcome.planned.append(entry.key)
+            continue
+
+        if writer.mark_finished(book_id, entry.finish_date):
+            store.record(entry.key, book_id, entry.finish_date)
+            outcome.written.append(entry.key)
+        else:
+            outcome.failed.append(entry.key)
+
+    return outcome
+
+
+def run_review_sync(
+    books: Iterable[SourceBook],
+    *,
+    rater: Rater,
+    store: SyncStore,
+    narrator_note: bool = True,
+    dry_run: bool = False,
+) -> SyncOutcome:
+    """Write each book's rating + review (with a narrator note) to its matched
+    StoryGraph book. Requires the book to already be matched (mark-read pass populates
+    the store mapping). Idempotent via the store's ``rated`` set; an existing StoryGraph
+    review is left untouched (the writer reports 'skipped')."""
+    outcome = SyncOutcome()
+    for book in books:
+        if store.is_rated(book.key):
+            outcome.skipped_synced.append(book.key)
+            continue
+        book_id = store.cached_book_id(book.key)
+        if book_id is None:
+            outcome.no_match.append(book.key)
+            continue
+
+        stars_integer, stars_decimal = ("", "")
+        if book.rating:
+            stars_integer, stars_decimal = rating_to_stars(book.rating)
+        narrators = book.narrators if narrator_note else ()
+        explanation = compose_review(book.review, narrators) or ""
+        if not stars_integer and not explanation:
+            continue
+
+        if dry_run:
+            outcome.planned.append(book.key)
+            continue
+
+        status = rater.write_review(
+            book_id,
+            stars_integer=stars_integer,
+            stars_decimal=stars_decimal,
+            explanation=explanation,
+        )
+        if status == "written":
+            store.record_rated(book.key)
+            outcome.written.append(book.key)
+        elif status == "skipped":
+            store.record_rated(book.key)
+            outcome.skipped_synced.append(book.key)
         else:
             outcome.failed.append(book.key)
 

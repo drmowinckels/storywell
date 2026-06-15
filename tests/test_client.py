@@ -4,7 +4,11 @@ from storywell.storygraph.client import (
     DATE_DAY_SELECTOR,
     DATE_MONTH_SELECTOR,
     DATE_YEAR_SELECTOR,
+    EXPLANATION_SELECTOR,
     READ_STATUS_LABEL_SELECTOR,
+    REVIEW_SUBMIT_SELECTOR,
+    STARS_DECIMAL_SELECTOR,
+    STARS_INTEGER_SELECTOR,
     STATUS_READ_FORM_SELECTOR,
     SUBMIT_INSTANCE_SELECTOR,
     StorygraphClient,
@@ -174,3 +178,44 @@ def test_client_with_external_page_is_noop_on_already_read():
     with StorygraphClient(page=page) as client:
         assert client.mark_finished("b1") is True
     assert page.goto_urls == ["https://app.thestorygraph.com/books/b1"]
+
+
+class _FakeExplanation:
+    def __init__(self):
+        self.value = None
+
+    def evaluate(self, _js, arg):
+        self.value = arg
+
+
+def test_write_review_skipped_when_form_absent(tmp_path):
+    page = _FakePage({})  # /reviews/new redirected -> no stars select
+    with _client(page, tmp_path) as client:
+        assert client.write_review("b1", stars_integer="5", explanation="x") == "skipped"
+
+
+def test_write_review_writes_rating_and_explanation(tmp_path):
+    stars, decimal, expl, submit = _FakeSelect(), _FakeSelect(), _FakeExplanation(), _FakeSubmit()
+    page = _FakePage(
+        {
+            STARS_INTEGER_SELECTOR: stars,
+            STARS_DECIMAL_SELECTOR: decimal,
+            EXPLANATION_SELECTOR: expl,
+            REVIEW_SUBMIT_SELECTOR: submit,
+        }
+    )
+    with _client(page, tmp_path) as client:
+        status = client.write_review(
+            "b1", stars_integer="5", stars_decimal="", explanation="Narrated by X."
+        )
+    assert status == "written"
+    assert stars.value == "5"
+    assert expl.value == "Narrated by X."
+    assert submit.clicked is True
+    assert any("/reviews/new?book_id=b1" in u for u in page.goto_urls)
+
+
+def test_write_review_failed_when_no_submit(tmp_path):
+    page = _FakePage({STARS_INTEGER_SELECTOR: _FakeSelect()})
+    with _client(page, tmp_path) as client:
+        assert client.write_review("b1", stars_integer="5") == "failed"

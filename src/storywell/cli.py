@@ -178,10 +178,16 @@ def _choose_candidate(choice: str, options: list):
     return None
 
 
-def _prompt_ambiguous(book: SourceBook, result):
+def _display_name(item) -> str:
+    authors = getattr(item, "authors", None)
+    if authors:
+        return f"{item.title} by {', '.join(authors)}"
+    return getattr(item, "title", str(item))
+
+
+def _prompt_ambiguous(item, result):
     options = [scored for scored in (result.best, *result.alternatives) if scored is not None]
-    authors = ", ".join(book.authors) or "?"
-    console.print(f"\nAmbiguous: [bold]{book.title}[/] by {authors}", style="yellow")
+    console.print(f"\nAmbiguous: [bold]{_display_name(item)}[/]", style="yellow")
     for number, scored in enumerate(options, 1):
         candidate = scored.candidate
         console.print(
@@ -204,9 +210,12 @@ def sync(
     limit: int = typer.Option(
         0, "--limit", min=0, help="Process at most N finished books (0 = all)."
     ),
+    ratings: bool = typer.Option(
+        True, "--ratings/--no-ratings", help="Also sync your rating + review (with narrator note)."
+    ),
     headless: bool = typer.Option(True, "--headless/--headed"),
 ) -> None:
-    """Mark a source's finished books as read on StoryGraph.
+    """Mark a source's finished books as read on StoryGraph (and sync ratings/reviews).
 
     Writes high-confidence matches directly and prompts on ambiguous ones.
     Use --dry-run to preview the match plan without writing anything.
@@ -219,6 +228,7 @@ def sync(
         SyncStore,
         is_authenticated,
         plan_sync,
+        run_review_sync,
         run_sync,
         summarize,
     )
@@ -271,20 +281,145 @@ def sync(
                 store=store,
                 confirm_fn=_prompt_ambiguous,
             )
+            review_outcome = run_review_sync(books, rater=client, store=store) if ratings else None
     store.save()
 
     console.print(
-        f"written: {len(outcome.written)}  "
+        f"read — written: {len(outcome.written)}  "
         f"skipped (already synced): {len(outcome.skipped_synced)}  "
         f"ambiguous skipped: {len(outcome.ambiguous_skipped)}  "
         f"no match: {len(outcome.no_match)}  "
         f"failed: {len(outcome.failed)}",
         style="cyan",
     )
+    if review_outcome is not None:
+        console.print(
+            f"ratings/reviews — written: {len(review_outcome.written)}  "
+            f"skipped: {len(review_outcome.skipped_synced)}  "
+            f"no match: {len(review_outcome.no_match)}  "
+            f"failed: {len(review_outcome.failed)}",
+            style="cyan",
+        )
     if outcome.failed:
         console.print(
             f"{len(outcome.failed)} book(s) failed to write; re-run to retry.", style="red"
         )
+
+
+@app.command("collections")
+def collections(
+    source: str = SourceOption,
+    threshold: float = ThresholdOption,
+    auth_file: Path | None = AuthFileOption,
+    profile: str | None = ProfileOption,
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--no-dry-run", help="Preview detected collections; no writes."
+    ),
+    headless: bool = typer.Option(True, "--headless/--headed"),
+) -> None:
+    """Mark the books contained in finished collections as read on StoryGraph.
+
+    --dry-run (default) previews each collection and its proposed contained titles;
+    --no-dry-run prompts you to pick which to mark read (with the collection's finish date).
+    """
+    from .config import sync_store_path
+    from .storygraph import (
+        StorygraphBrowser,
+        StorygraphDependencyError,
+        SyncStore,
+        is_authenticated,
+        run_title_sync,
+    )
+    from .storygraph.client import StorygraphClient
+    from .storygraph.collections import proposed_titles, select_titles
+    from .storygraph.matching import search_title
+    from .storygraph.search import StorygraphSearcher
+    from .storygraph.sync import TitleEntry
+
+    try:
+        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+    except SourceError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    found = [book for book in books if book.is_collection]
+    if not found:
+        console.print(f"No finished collections found from {source}.", style="yellow")
+        return
+
+    try:
+        if not is_authenticated():
+            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
+            raise typer.Exit(code=1)
+    except StorygraphDependencyError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    if dry_run:
+        with StorygraphSearcher(headless=headless) as searcher:
+            for book in found:
+                candidates = searcher.search(search_title(book.title))
+                best = candidates[0] if candidates else None
+                titles = (
+                    proposed_titles(best.title, searcher.fetch_description(best.book_id))
+                    if best
+                    else []
+                )
+                console.print(f"\n[bold]{book.title}[/]", style="cyan")
+                console.print(f"  StoryGraph: {best.title if best else '— not found —'}")
+                for title in titles:
+                    console.print(f"    [ ] {title}")
+                if not titles:
+                    console.print("    (no titles parsed — type them manually with --no-dry-run)")
+        return
+
+    store = SyncStore.load(sync_store_path())
+    totals = {"written": 0, "skipped": 0, "failed": 0}
+    with StorygraphBrowser(headless=headless) as browser:
+        searcher = StorygraphSearcher(page=browser.page)
+        client = StorygraphClient(page=browser.page)
+        with searcher, client:
+            for book in found:
+                finish_date = book.finished_at.date() if book.finished_at else None
+                candidates = searcher.search(search_title(book.title))
+                best = candidates[0] if candidates else None
+                suggestions = (
+                    proposed_titles(best.title, searcher.fetch_description(best.book_id))
+                    if best
+                    else []
+                )
+                console.print(f"\n[bold]{book.title}[/]", style="cyan")
+                for number, title in enumerate(suggestions, 1):
+                    console.print(f"  {number}. {title}")
+                console.print("(enter numbers like 1,3,5 — 'a' for all, blank to skip)")
+                chosen = select_titles(suggestions, typer.prompt("Mark which", default=""))
+                extra = typer.prompt("Add other titles (comma-separated)", default="")
+                chosen += [t.strip() for t in extra.split(",") if t.strip()]
+                if not chosen:
+                    continue
+                entries = [
+                    TitleEntry(key=f"{book.key}::{t.lower()}", title=t, finish_date=finish_date)
+                    for t in chosen
+                ]
+                outcome = run_title_sync(
+                    entries,
+                    search_fn=searcher.search,
+                    writer=client,
+                    store=store,
+                    confirm_fn=_prompt_ambiguous,
+                )
+                totals["written"] += len(outcome.written)
+                totals["skipped"] += (
+                    len(outcome.skipped_synced)
+                    + len(outcome.no_match)
+                    + len(outcome.ambiguous_skipped)
+                )
+                totals["failed"] += len(outcome.failed)
+    store.save()
+    console.print(
+        f"\nwritten: {totals['written']}  skipped: {totals['skipped']}  failed: {totals['failed']}",
+        style="cyan",
+    )
 
 
 @app.command("storygraph-login")

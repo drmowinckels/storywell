@@ -18,8 +18,23 @@ from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright
 
 SEARCH_URL = f"{BASE_URL}/browse"
 RESULT_SELECTOR = ".book-pane"
+DESCRIPTION_SELECTOR = ".trix-content"
 RESULT_TIMEOUT_MS = 8000
 _BOOK_ID_RE = re.compile(r"/books/([^/?#]+)")
+
+_EXPAND_SHOW_MORE_JS = """
+() => {
+  const el = [...document.querySelectorAll('a,button,span,div')]
+    .find(e => /^\\s*show more\\s*$/i.test(e.textContent || ''));
+  if (el) el.click();
+}
+"""
+_READ_DESCRIPTION_JS = """
+() => {
+  const els = [...document.querySelectorAll('.trix-content')];
+  return els.map(e => e.innerText || '').sort((a, b) => b.length - a.length)[0] || '';
+}
+"""
 
 _EXTRACT_JS = """
 (el) => {
@@ -116,6 +131,16 @@ class StorygraphSearcher:
         except Exception:
             return []
         return _candidates_from_records(_extract_records(self._page), self._max_results)
+
+    def fetch_description(self, book_id: str) -> str:
+        self._page.goto(f"{BASE_URL}/books/{book_id}", wait_until="domcontentloaded")
+        try:
+            self._page.wait_for_selector(DESCRIPTION_SELECTOR, timeout=RESULT_TIMEOUT_MS)
+        except Exception:
+            return ""
+        self._page.evaluate(_EXPAND_SHOW_MORE_JS)
+        self._page.wait_for_timeout(300)
+        return self._page.evaluate(_READ_DESCRIPTION_JS)
 
 
 def search_books(

@@ -28,6 +28,7 @@ class SyncStore:
     path: Path
     mappings: dict[str, str] = field(default_factory=dict)
     synced: dict[str, str] = field(default_factory=dict)
+    rated: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(cls, path: Path) -> SyncStore:
@@ -39,6 +40,7 @@ class SyncStore:
             path=path,
             mappings=dict(data.get("mappings", {})),
             synced=dict(data.get("synced", {})),
+            rated=dict(data.get("rated", {})),
         )
 
     def cached_book_id(self, key: str) -> str | None:
@@ -47,6 +49,9 @@ class SyncStore:
     def is_synced(self, key: str, finished_on: date | str | None) -> bool:
         return key in self.synced and self.synced[key] == _norm_date(finished_on)
 
+    def is_rated(self, key: str) -> bool:
+        return key in self.rated
+
     def remember_match(self, key: str, book_id: str) -> None:
         self.mappings[key] = book_id
 
@@ -54,11 +59,14 @@ class SyncStore:
         self.mappings[key] = book_id
         self.synced[key] = _norm_date(finished_on)
 
+    def record_rated(self, key: str, marker: str = "done") -> None:
+        self.rated[key] = marker
+
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text(
             json.dumps(
-                {"mappings": self.mappings, "synced": self.synced},
+                {"mappings": self.mappings, "synced": self.synced, "rated": self.rated},
                 indent=2,
                 sort_keys=True,
             )

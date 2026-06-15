@@ -145,3 +145,29 @@ def test_search_books_single_shot(tmp_path):
     page = _FakePage([{"href": "/books/b9", "title": "Solo", "author": "X"}])
     results = search.search_books("Solo", state_path=state, playwright_factory=_FakeFactory(page))
     assert [c.book_id for c in results] == ["b9"]
+
+
+class _DescPage:
+    def __init__(self, text):
+        self._text = text
+        self.goto_urls = []
+
+    def goto(self, url, **kwargs):
+        self.goto_urls.append(url)
+
+    def wait_for_selector(self, selector, timeout=None):
+        return object()
+
+    def wait_for_timeout(self, _ms):
+        pass
+
+    def evaluate(self, _js):
+        return self._text
+
+
+def test_fetch_description_returns_text():
+    page = _DescPage("Included are the following: A, B.")
+    with StorygraphSearcher(page=page) as searcher:
+        desc = searcher.fetch_description("b1")
+    assert "Included are the following" in desc
+    assert any("/books/b1" in u for u in page.goto_urls)

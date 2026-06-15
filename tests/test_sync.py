@@ -10,10 +10,13 @@ from storywell.storygraph.matching import (
 from storywell.storygraph.store import SyncStore
 from storywell.storygraph.sync import (
     SyncPlanItem,
+    TitleEntry,
     plan_sync,
     query_for,
     resolve_match,
+    run_review_sync,
     run_sync,
+    run_title_sync,
     summarize,
 )
 
@@ -219,3 +222,93 @@ def test_run_sync_records_failure(tmp_path):
     )
     assert outcome.failed == ["audible:A1"]
     assert outcome.written == []
+
+
+def test_run_title_sync_writes_each_title(tmp_path):
+    entries = [TitleEntry(key="audible:c::emma", title="Emma", finish_date=date(2020, 1, 1))]
+    writer = _FakeWriter()
+    outcome = run_title_sync(
+        entries,
+        search_fn=lambda q: [Candidate("b1", "Emma", "")],
+        writer=writer,
+        store=_store(tmp_path),
+    )
+    assert outcome.written == ["audible:c::emma"]
+    assert writer.calls == [("b1", date(2020, 1, 1))]
+
+
+def test_run_title_sync_skips_already_synced(tmp_path):
+    store = _store(tmp_path)
+    store.record("audible:c::emma", "b1", date(2020, 1, 1))
+    entries = [TitleEntry(key="audible:c::emma", title="Emma", finish_date=date(2020, 1, 1))]
+    outcome = run_title_sync(entries, search_fn=lambda q: [], writer=_FakeWriter(), store=store)
+    assert outcome.skipped_synced == ["audible:c::emma"]
+
+
+def test_run_title_sync_no_match(tmp_path):
+    entries = [TitleEntry(key="audible:c::zzz", title="Zzz Unknown Book")]
+    outcome = run_title_sync(
+        entries,
+        search_fn=lambda q: [Candidate("b", "Totally Different Title", "")],
+        writer=_FakeWriter(),
+        store=_store(tmp_path),
+    )
+    assert outcome.no_match == ["audible:c::zzz"]
+
+
+class _FakeRater:
+    def __init__(self, status="written"):
+        self.status = status
+        self.calls = []
+
+    def write_review(self, book_id, *, stars_integer, stars_decimal, explanation):
+        self.calls.append((book_id, stars_integer, stars_decimal, explanation))
+        return self.status
+
+
+def _rated_book(source_id="A1", rating=5.0, narrators=("Moira Quirk",), review=None):
+    return SourceBook(
+        source="audible",
+        source_id=source_id,
+        title="Nona the Ninth",
+        rating=rating,
+        narrators=tuple(narrators),
+        review=review,
+    )
+
+
+def test_run_review_sync_writes_rating_and_narrator_note(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book()
+    store.remember_match(book.key, "sg1")
+    rater = _FakeRater()
+    outcome = run_review_sync([book], rater=rater, store=store)
+    assert outcome.written == [book.key]
+    assert rater.calls == [("sg1", "5", "", "Narrated by Moira Quirk.")]
+    assert store.is_rated(book.key) is True
+
+
+def test_run_review_sync_skips_already_rated(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book()
+    store.remember_match(book.key, "sg1")
+    store.record_rated(book.key)
+    rater = _FakeRater()
+    outcome = run_review_sync([book], rater=rater, store=store)
+    assert outcome.skipped_synced == [book.key]
+    assert rater.calls == []
+
+
+def test_run_review_sync_no_match_when_unmatched(tmp_path):
+    store = _store(tmp_path)
+    outcome = run_review_sync([_rated_book()], rater=_FakeRater(), store=store)
+    assert outcome.no_match == ["audible:A1"]
+
+
+def test_run_review_sync_existing_storygraph_review_recorded_as_done(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book()
+    store.remember_match(book.key, "sg1")
+    outcome = run_review_sync([book], rater=_FakeRater(status="skipped"), store=store)
+    assert outcome.skipped_synced == [book.key]
+    assert store.is_rated(book.key) is True

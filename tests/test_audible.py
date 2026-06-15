@@ -11,12 +11,65 @@ from storywell.sources.audible import (
     LibraryFetchError,
     fetch_library_items,
     filter_finished,
+    is_collection,
     item_to_book,
     locate_auth_file,
     parse_finished_at,
     parse_is_finished,
     parse_percent_complete,
+    parse_rating,
+    parse_review,
 )
+
+
+def test_parse_rating_reads_overall_rating():
+    assert parse_rating({"provided_review": {"ratings": {"overall_rating": 4}}}) == 4.0
+    assert parse_rating({}) is None
+    assert parse_rating({"provided_review": {"ratings": {"overall_rating": 0}}}) is None
+
+
+def test_parse_review_strips_html_and_unescapes():
+    item = {"provided_review": {"body": "great<br /><br />only complaint &amp; minor"}}
+    assert parse_review(item) == "great\n\nonly complaint & minor"
+
+
+def test_parse_review_none_when_empty():
+    assert parse_review({}) is None
+    assert parse_review({"provided_review": {"body": "   "}}) is None
+
+
+def test_item_to_book_carries_rating_and_review():
+    item = {
+        "asin": "A",
+        "title": "Rated Book",
+        "provided_review": {"ratings": {"overall_rating": 5}, "body": "loved it"},
+    }
+    book = item_to_book(item)
+    assert book.rating == 5.0
+    assert book.review == "loved it"
+
+
+def _coll_item(title, content_delivery_type="MultiPartBook"):
+    return {"asin": "C", "title": title, "content_delivery_type": content_delivery_type}
+
+
+def test_is_collection_true_for_collection_titles():
+    assert is_collection(_coll_item("The Complete Jane Austen Collection"))
+    assert is_collection(_coll_item("Wool Omnibus Edition (Wool 1 - 5)"))
+    assert is_collection(_coll_item("Sherlock Holmes: The Definitive Collection"))
+
+
+def test_is_collection_false_for_ordinary_and_single_volumes():
+    assert not is_collection(_coll_item("Jade City"))
+    assert not is_collection(_coll_item("Catching Fire: Hunger Games Trilogy, Book 2"))
+    assert not is_collection(
+        _coll_item("The Monster Collection", content_delivery_type="SinglePartBook")
+    )
+
+
+def test_item_to_book_sets_is_collection():
+    assert item_to_book(_coll_item("The Complete Jane Austen Collection")).is_collection is True
+    assert item_to_book({"asin": "A", "title": "Jade City"}).is_collection is False
 
 
 def make_item(
