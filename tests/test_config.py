@@ -1,17 +1,17 @@
 from pathlib import Path
 
-from audible_storygraph_sync import config
+from storywell import config
 
 
 def test_config_dir_respects_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert config.config_dir() == tmp_path / "audible-storygraph-sync"
+    assert config.config_dir() == tmp_path / "storywell"
 
 
 def test_config_dir_defaults_to_home_config(monkeypatch, tmp_path):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    assert config.config_dir() == tmp_path / ".config" / "audible-storygraph-sync"
+    assert config.config_dir() == tmp_path / ".config" / "storywell"
 
 
 def test_ensure_config_dir_creates_with_secure_mode(monkeypatch, tmp_path):
@@ -23,6 +23,4 @@ def test_ensure_config_dir_creates_with_secure_mode(monkeypatch, tmp_path):
 
 def test_storygraph_state_path_under_config_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    assert config.storygraph_state_path() == (
-        tmp_path / "audible-storygraph-sync" / "storygraph-state.json"
-    )
+    assert config.storygraph_state_path() == (tmp_path / "storywell" / "storygraph-state.json")

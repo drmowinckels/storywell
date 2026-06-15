@@ -7,20 +7,47 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .audible_client import AuthFileNotFound, LibraryFetchError, finished_audiobooks
-from .models import Audiobook
+from .models import SourceBook
+from .sources import SourceError, available_sources, make_source
+
+DEFAULT_SOURCE = "audible"
 
 app = typer.Typer(
     add_completion=False,
-    help="Sync finished audiobooks from Audible to The StoryGraph.",
+    help="Sync finished books from Audible, Goodreads & more into The StoryGraph.",
     no_args_is_help=True,
 )
 console = Console()
 
+SourceOption = typer.Option(
+    DEFAULT_SOURCE,
+    "--source",
+    "-s",
+    help="Which vendor to read from. See `storywell sources`.",
+)
+ThresholdOption = typer.Option(
+    0.95,
+    "--threshold",
+    "-t",
+    min=0.0,
+    max=1.0,
+    help="Treat a book as finished when percent_complete >= threshold.",
+)
+AuthFileOption = typer.Option(
+    None,
+    "--auth-file",
+    help="Audible only: path to the audible-cli auth JSON. Auto-discovered if omitted.",
+)
+ProfileOption = typer.Option(
+    None,
+    "--profile",
+    help="Audible only: audible-cli profile name. Defaults to the primary profile.",
+)
+
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"audible-storygraph-sync {__version__}")
+        typer.echo(f"storywell {__version__}")
         raise typer.Exit()
 
 
@@ -37,14 +64,25 @@ def _root(
     pass
 
 
-def build_table(books: list[Audiobook]) -> Table:
-    table = Table(title=f"Finished audiobooks ({len(books)})", show_lines=False)
+def _load_finished(
+    source: str,
+    *,
+    threshold: float,
+    auth_file: Path | None,
+    profile: str | None,
+) -> list[SourceBook]:
+    src = make_source(source, auth_file=auth_file, profile=profile)
+    return src.finished_books(threshold=threshold)
+
+
+def build_table(books: list[SourceBook], *, source: str) -> Table:
+    table = Table(title=f"Finished books from {source} ({len(books)})", show_lines=False)
     table.add_column("Title", overflow="fold")
     table.add_column("Author")
     table.add_column("%", justify="right")
     table.add_column("Finished")
 
-    def sort_key(book: Audiobook) -> tuple[str, str]:
+    def sort_key(book: SourceBook) -> tuple[str, str]:
         return (book.finished_at.isoformat() if book.finished_at else "", book.title.lower())
 
     for book in sorted(books, key=sort_key):
@@ -57,42 +95,50 @@ def build_table(books: list[Audiobook]) -> Table:
     return table
 
 
-@app.command("audible-list")
-def audible_list(
-    threshold: float = typer.Option(
-        0.95,
-        "--threshold",
-        "-t",
-        min=0.0,
-        max=1.0,
-        help="Treat a book as finished when percent_complete >= threshold.",
-    ),
-    auth_file: Path | None = typer.Option(
-        None,
-        "--auth-file",
-        help=(
-            "Path to the audible-cli auth JSON. "
-            "Auto-discovered via ~/.audible/config.toml if omitted."
-        ),
-    ),
-    profile: str | None = typer.Option(
-        None,
-        "--profile",
-        help="audible-cli profile name. Defaults to the primary profile in config.toml.",
-    ),
+@app.command("sources")
+def sources() -> None:
+    """List the vendors Storywell can read from."""
+    for name in available_sources():
+        console.print(f"- {name}")
+
+
+@app.command("migrate-store")
+def migrate_store() -> None:
+    """Carry over a pre-rename audible-storygraph-sync session and sync history."""
+    from .migrate import migrate_legacy
+
+    report = migrate_legacy()
+    if not (report.state_migrated or report.store_migrated):
+        console.print("Nothing to migrate (no legacy data, or already migrated).", style="yellow")
+        return
+    if report.state_migrated:
+        console.print("Migrated saved StoryGraph session.", style="green")
+    if report.store_migrated:
+        console.print(
+            f"Migrated sync history: {report.mappings} matches, {report.synced} synced.",
+            style="green",
+        )
+
+
+@app.command("list")
+def list_books(
+    source: str = SourceOption,
+    threshold: float = ThresholdOption,
+    auth_file: Path | None = AuthFileOption,
+    profile: str | None = ProfileOption,
 ) -> None:
-    """List your finished Audible audiobooks."""
+    """List the finished books a source reports."""
     try:
-        books = finished_audiobooks(threshold=threshold, auth_file=auth_file, profile=profile)
-    except (AuthFileNotFound, LibraryFetchError) as err:
+        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+    except SourceError as err:
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err
 
     if not books:
-        console.print("No finished audiobooks found.", style="yellow")
+        console.print(f"No finished books found from {source}.", style="yellow")
         return
 
-    console.print(build_table(books))
+    console.print(build_table(books, source=source))
 
 
 def build_match_table(items: list) -> Table:
@@ -104,7 +150,7 @@ def build_match_table(items: list) -> Table:
         MatchStatus.NO_MATCH: "red",
     }
     table = Table(title=f"StoryGraph match plan ({len(items)})", show_lines=False)
-    table.add_column("Audible title", overflow="fold")
+    table.add_column("Source title", overflow="fold")
     table.add_column("Status")
     table.add_column("StoryGraph match", overflow="fold")
     table.add_column("Score", justify="right")
@@ -132,7 +178,7 @@ def _choose_candidate(choice: str, options: list):
     return None
 
 
-def _prompt_ambiguous(book: Audiobook, result):
+def _prompt_ambiguous(book: SourceBook, result):
     options = [scored for scored in (result.best, *result.alternatives) if scored is not None]
     authors = ", ".join(book.authors) or "?"
     console.print(f"\nAmbiguous: [bold]{book.title}[/] by {authors}", style="yellow")
@@ -148,9 +194,10 @@ def _prompt_ambiguous(book: Audiobook, result):
 
 @app.command("sync")
 def sync(
-    threshold: float = typer.Option(0.95, "--threshold", "-t", min=0.0, max=1.0),
-    auth_file: Path | None = typer.Option(None, "--auth-file"),
-    profile: str | None = typer.Option(None, "--profile"),
+    source: str = SourceOption,
+    threshold: float = ThresholdOption,
+    auth_file: Path | None = AuthFileOption,
+    profile: str | None = ProfileOption,
     dry_run: bool = typer.Option(
         False, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
     ),
@@ -159,7 +206,7 @@ def sync(
     ),
     headless: bool = typer.Option(True, "--headless/--headed"),
 ) -> None:
-    """Mark finished Audible books as read on StoryGraph.
+    """Mark a source's finished books as read on StoryGraph.
 
     Writes high-confidence matches directly and prompts on ambiguous ones.
     Use --dry-run to preview the match plan without writing anything.
@@ -179,13 +226,13 @@ def sync(
     from .storygraph.search import StorygraphSearcher
 
     try:
-        books = finished_audiobooks(threshold=threshold, auth_file=auth_file, profile=profile)
-    except (AuthFileNotFound, LibraryFetchError) as err:
+        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+    except SourceError as err:
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err
 
     if not books:
-        console.print("No finished audiobooks found.", style="yellow")
+        console.print(f"No finished books found from {source}.", style="yellow")
         return
 
     if limit:

@@ -37,7 +37,7 @@ format-check: ## Check formatting without writing
 check: lint format-check test ## Full gate: lint + format check + tests
 
 run: ## Run the CLI (pass args via ARGS=...)
-	$(PY) -m audible_storygraph_sync.cli $(ARGS)
+	$(PY) -m storywell.cli $(ARGS)
 
 clean: ## Remove caches and build artifacts
 	rm -rf .pytest_cache .ruff_cache build dist *.egg-info

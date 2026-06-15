@@ -1,3 +1,10 @@
+"""Audible source: reads the listener's library and reports finished audiobooks.
+
+The pure parsing/filtering helpers are unit-tested; ``AudibleSource`` wires them to
+the live ``audible`` client. Audible has no public API and no ISBNs, so downstream
+matching against StoryGraph is title/author based (see ``storywell.storygraph``).
+"""
+
 from __future__ import annotations
 
 import tomllib
@@ -10,7 +17,10 @@ import audible
 import audible.exceptions
 import httpx
 
-from .models import Audiobook
+from ..models import SourceBook
+from .base import SourceError
+
+SOURCE_NAME = "audible"
 
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc,product_attrs,contributors,is_finished,percent_complete,relationships"
@@ -21,11 +31,11 @@ PAGE_SIZE = 1000
 MAX_PAGES = 50
 
 
-class AuthFileNotFound(RuntimeError):
+class AuthFileNotFound(SourceError):
     pass
 
 
-class LibraryFetchError(RuntimeError):
+class LibraryFetchError(SourceError):
     pass
 
 
@@ -116,9 +126,10 @@ def parse_is_finished(item: dict[str, Any]) -> bool:
     return bool(status.get("is_finished") or item.get("is_finished"))
 
 
-def item_to_audiobook(item: dict[str, Any]) -> Audiobook:
-    return Audiobook(
-        asin=item["asin"],
+def item_to_book(item: dict[str, Any]) -> SourceBook:
+    return SourceBook(
+        source=SOURCE_NAME,
+        source_id=item["asin"],
         title=item.get("title", "").strip(),
         authors=parse_authors(item),
         narrators=parse_narrators(item),
@@ -128,11 +139,11 @@ def item_to_audiobook(item: dict[str, Any]) -> Audiobook:
     )
 
 
-def filter_finished(items: Iterable[dict[str, Any]], threshold: float = 0.95) -> list[Audiobook]:
+def filter_finished(items: Iterable[dict[str, Any]], threshold: float = 0.95) -> list[SourceBook]:
     cutoff = threshold * 100.0
-    finished: list[Audiobook] = []
+    finished: list[SourceBook] = []
     for raw in items:
-        book = item_to_audiobook(raw)
+        book = item_to_book(raw)
         if book.is_finished or book.percent_complete >= cutoff:
             finished.append(book)
     return finished
@@ -178,11 +189,16 @@ def fetch_library_items(auth_file: Path) -> list[dict[str, Any]]:
         raise LibraryFetchError(f"Network error talking to Audible: {err}") from err
 
 
-def finished_audiobooks(
-    threshold: float = 0.95,
-    auth_file: Path | None = None,
-    profile: str | None = None,
-) -> list[Audiobook]:
-    resolved = locate_auth_file(auth_file, profile=profile)
-    items = fetch_library_items(resolved)
-    return filter_finished(items, threshold=threshold)
+class AudibleSource:
+    """Reports finished audiobooks from an Audible library via ``audible-cli`` auth."""
+
+    name = SOURCE_NAME
+
+    def __init__(self, *, auth_file: Path | None = None, profile: str | None = None):
+        self.auth_file = auth_file
+        self.profile = profile
+
+    def finished_books(self, *, threshold: float = 0.95) -> list[SourceBook]:
+        resolved = locate_auth_file(self.auth_file, profile=self.profile)
+        items = fetch_library_items(resolved)
+        return filter_finished(items, threshold=threshold)

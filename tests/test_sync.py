@@ -1,14 +1,14 @@
 from datetime import UTC, date, datetime
 
-from audible_storygraph_sync.models import Audiobook
-from audible_storygraph_sync.storygraph.matching import (
+from storywell.models import SourceBook
+from storywell.storygraph.matching import (
     Candidate,
     MatchResult,
     MatchStatus,
     ScoredCandidate,
 )
-from audible_storygraph_sync.storygraph.store import SyncStore
-from audible_storygraph_sync.storygraph.sync import (
+from storywell.storygraph.store import SyncStore
+from storywell.storygraph.sync import (
     SyncPlanItem,
     plan_sync,
     query_for,
@@ -18,8 +18,14 @@ from audible_storygraph_sync.storygraph.sync import (
 )
 
 
-def _book(title, *authors, asin="A", finished_at=None):
-    return Audiobook(asin=asin, title=title, authors=tuple(authors), finished_at=finished_at)
+def _book(title, *authors, source_id="A", finished_at=None):
+    return SourceBook(
+        source="audible",
+        source_id=source_id,
+        title=title,
+        authors=tuple(authors),
+        finished_at=finished_at,
+    )
 
 
 class _FakeWriter:
@@ -102,7 +108,12 @@ def test_resolve_match_none_for_ambiguous_without_confirm():
 
 def test_run_sync_writes_high_confidence_match(tmp_path):
     books = [
-        _book("Hyperion", "Dan Simmons", asin="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))
+        _book(
+            "Hyperion",
+            "Dan Simmons",
+            source_id="A1",
+            finished_at=datetime(2023, 8, 18, tzinfo=UTC),
+        )
     ]
     writer = _FakeWriter()
     store = _store(tmp_path)
@@ -112,24 +123,24 @@ def test_run_sync_writes_high_confidence_match(tmp_path):
         writer=writer,
         store=store,
     )
-    assert outcome.written == ["A1"]
+    assert outcome.written == ["audible:A1"]
     assert writer.calls == [("b1", date(2023, 8, 18))]
-    assert store.is_synced("A1", date(2023, 8, 18)) is True
+    assert store.is_synced("audible:A1", date(2023, 8, 18)) is True
 
 
 def test_run_sync_skips_already_synced(tmp_path):
     store = _store(tmp_path)
-    store.record("A1", "b1", date(2023, 8, 18))
-    books = [_book("X", asin="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))]
+    store.record("audible:A1", "b1", date(2023, 8, 18))
+    books = [_book("X", source_id="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))]
     writer = _FakeWriter()
     outcome = run_sync(books, search_fn=lambda q: [], writer=writer, store=store)
-    assert outcome.skipped_synced == ["A1"]
+    assert outcome.skipped_synced == ["audible:A1"]
     assert writer.calls == []
 
 
 def test_run_sync_uses_cached_book_id_without_searching(tmp_path):
     store = _store(tmp_path)
-    store.remember_match("A1", "bX")
+    store.remember_match("audible:A1", "bX")
     searched = []
 
     def search(query):
@@ -137,21 +148,21 @@ def test_run_sync_uses_cached_book_id_without_searching(tmp_path):
         return []
 
     writer = _FakeWriter()
-    outcome = run_sync([_book("X", asin="A1")], search_fn=search, writer=writer, store=store)
+    outcome = run_sync([_book("X", source_id="A1")], search_fn=search, writer=writer, store=store)
     assert searched == []
     assert writer.calls == [("bX", None)]
-    assert outcome.written == ["A1"]
+    assert outcome.written == ["audible:A1"]
 
 
 def test_run_sync_no_match(tmp_path):
-    books = [_book("Zzz Unknown", "Nobody", asin="A1")]
+    books = [_book("Zzz Unknown", "Nobody", source_id="A1")]
     outcome = run_sync(
         books,
         search_fn=lambda q: [Candidate("b", "Totally Different Title", "X")],
         writer=_FakeWriter(),
         store=_store(tmp_path),
     )
-    assert outcome.no_match == ["A1"]
+    assert outcome.no_match == ["audible:A1"]
 
 
 def _ambiguous_candidates():
@@ -166,45 +177,45 @@ def _ambiguous_candidates():
 def test_run_sync_ambiguous_confirmed_is_written(tmp_path):
     writer = _FakeWriter()
     outcome = run_sync(
-        [_book("Twilight", asin="A1")],
+        [_book("Twilight", source_id="A1")],
         search_fn=lambda q: _ambiguous_candidates(),
         writer=writer,
         store=_store(tmp_path),
         confirm_fn=lambda book, result: result.best.candidate,
     )
-    assert outcome.written == ["A1"]
+    assert outcome.written == ["audible:A1"]
 
 
 def test_run_sync_ambiguous_skipped_when_confirm_declines(tmp_path):
     outcome = run_sync(
-        [_book("Twilight", asin="A1")],
+        [_book("Twilight", source_id="A1")],
         search_fn=lambda q: _ambiguous_candidates(),
         writer=_FakeWriter(),
         store=_store(tmp_path),
         confirm_fn=lambda book, result: None,
     )
-    assert outcome.ambiguous_skipped == ["A1"]
+    assert outcome.ambiguous_skipped == ["audible:A1"]
 
 
 def test_run_sync_dry_run_plans_without_writing(tmp_path):
     writer = _FakeWriter()
     outcome = run_sync(
-        [_book("Hyperion", "Dan Simmons", asin="A1")],
+        [_book("Hyperion", "Dan Simmons", source_id="A1")],
         search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
         writer=writer,
         store=_store(tmp_path),
         dry_run=True,
     )
-    assert outcome.planned == ["A1"]
+    assert outcome.planned == ["audible:A1"]
     assert writer.calls == []
 
 
 def test_run_sync_records_failure(tmp_path):
     outcome = run_sync(
-        [_book("Hyperion", "Dan Simmons", asin="A1")],
+        [_book("Hyperion", "Dan Simmons", source_id="A1")],
         search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
         writer=_FakeWriter(ok=False),
         store=_store(tmp_path),
     )
-    assert outcome.failed == ["A1"]
+    assert outcome.failed == ["audible:A1"]
     assert outcome.written == []

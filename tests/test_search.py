@@ -1,5 +1,5 @@
-from audible_storygraph_sync.storygraph import search
-from audible_storygraph_sync.storygraph.search import (
+from storywell.storygraph import search
+from storywell.storygraph.search import (
     StorygraphSearcher,
     _candidates_from_records,
     parse_book_id,
