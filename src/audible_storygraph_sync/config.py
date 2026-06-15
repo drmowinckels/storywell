@@ -6,6 +6,7 @@ from pathlib import Path
 
 APP_DIR_NAME = "audible-storygraph-sync"
 STORYGRAPH_STATE_FILENAME = "storygraph-state.json"
+SYNC_STORE_FILENAME = "sync-store.json"
 
 
 def config_dir() -> Path:
@@ -24,3 +25,7 @@ def ensure_config_dir() -> Path:
 
 def storygraph_state_path() -> Path:
     return config_dir() / STORYGRAPH_STATE_FILENAME
+
+
+def sync_store_path() -> Path:
+    return config_dir() / SYNC_STORE_FILENAME

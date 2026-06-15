@@ -123,35 +123,59 @@ def build_match_table(items: list) -> Table:
     return table
 
 
+def _choose_candidate(choice: str, options: list):
+    choice = (choice or "").strip().lower()
+    if choice.isdigit():
+        index = int(choice) - 1
+        if 0 <= index < len(options):
+            return options[index].candidate
+    return None
+
+
+def _prompt_ambiguous(book: Audiobook, result):
+    options = [scored for scored in (result.best, *result.alternatives) if scored is not None]
+    authors = ", ".join(book.authors) or "?"
+    console.print(f"\nAmbiguous: [bold]{book.title}[/] by {authors}", style="yellow")
+    for number, scored in enumerate(options, 1):
+        candidate = scored.candidate
+        console.print(
+            f"  {number}. {candidate.title} — {candidate.author or '?'}  "
+            f"({scored.score:.2f})  [{candidate.book_id}]"
+        )
+    choice = typer.prompt("Pick a number to mark read, or 's' to skip", default="s")
+    return _choose_candidate(choice, options)
+
+
 @app.command("sync")
 def sync(
     threshold: float = typer.Option(0.95, "--threshold", "-t", min=0.0, max=1.0),
     auth_file: Path | None = typer.Option(None, "--auth-file"),
     profile: str | None = typer.Option(None, "--profile"),
     dry_run: bool = typer.Option(
-        True, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
+        False, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
     ),
     limit: int = typer.Option(
         0, "--limit", min=0, help="Process at most N finished books (0 = all)."
     ),
     headless: bool = typer.Option(True, "--headless/--headed"),
 ) -> None:
-    """Match finished Audible books to StoryGraph editions (preview only for now)."""
+    """Mark finished Audible books as read on StoryGraph.
+
+    Writes high-confidence matches directly and prompts on ambiguous ones.
+    Use --dry-run to preview the match plan without writing anything.
+    """
+    from .config import sync_store_path
     from .storygraph import (
         MatchStatus,
         StorygraphDependencyError,
+        SyncStore,
         is_authenticated,
         plan_sync,
+        run_sync,
         summarize,
     )
+    from .storygraph.client import StorygraphClient
     from .storygraph.search import StorygraphSearcher
-
-    if not dry_run:
-        console.print(
-            "Write-back is not implemented yet (lands in v0.2 slice 3). Re-run with --dry-run.",
-            style="yellow",
-        )
-        raise typer.Exit(code=1)
 
     try:
         books = finished_audiobooks(threshold=threshold, auth_file=auth_file, profile=profile)
@@ -174,17 +198,45 @@ def sync(
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err
 
-    with StorygraphSearcher(headless=headless) as searcher:
-        items = plan_sync(books, searcher.search)
+    if dry_run:
+        with StorygraphSearcher(headless=headless) as searcher:
+            items = plan_sync(books, searcher.search)
+        console.print(build_match_table(items))
+        counts = summarize(items)
+        console.print(
+            f"match: {counts[MatchStatus.MATCH]}  "
+            f"ambiguous: {counts[MatchStatus.AMBIGUOUS]}  "
+            f"no match: {counts[MatchStatus.NO_MATCH]}",
+            style="cyan",
+        )
+        return
 
-    console.print(build_match_table(items))
-    counts = summarize(items)
+    store = SyncStore.load(sync_store_path())
+    with (
+        StorygraphSearcher(headless=headless) as searcher,
+        StorygraphClient(headless=headless) as client,
+    ):
+        outcome = run_sync(
+            books,
+            search_fn=searcher.search,
+            writer=client,
+            store=store,
+            confirm_fn=_prompt_ambiguous,
+        )
+    store.save()
+
     console.print(
-        f"match: {counts[MatchStatus.MATCH]}  "
-        f"ambiguous: {counts[MatchStatus.AMBIGUOUS]}  "
-        f"no match: {counts[MatchStatus.NO_MATCH]}",
+        f"written: {len(outcome.written)}  "
+        f"skipped (already synced): {len(outcome.skipped_synced)}  "
+        f"ambiguous skipped: {len(outcome.ambiguous_skipped)}  "
+        f"no match: {len(outcome.no_match)}  "
+        f"failed: {len(outcome.failed)}",
         style="cyan",
     )
+    if outcome.failed:
+        console.print(
+            f"{len(outcome.failed)} book(s) failed to write; re-run to retry.", style="red"
+        )
 
 
 @app.command("storygraph-login")

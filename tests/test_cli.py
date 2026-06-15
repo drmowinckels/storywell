@@ -1,9 +1,9 @@
 from typer.testing import CliRunner
 
-from audible_storygraph_sync.cli import app
+from audible_storygraph_sync.cli import _choose_candidate, app
 from audible_storygraph_sync.models import Audiobook
 from audible_storygraph_sync.storygraph import StorygraphDependencyError
-from audible_storygraph_sync.storygraph.matching import Candidate
+from audible_storygraph_sync.storygraph.matching import Candidate, ScoredCandidate
 
 runner = CliRunner()
 
@@ -20,6 +20,35 @@ class _FakeSearcher:
 
     def search(self, query):
         return [Candidate("b1", "Hyperion", "Dan Simmons")]
+
+
+class _FakeClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def mark_finished(self, book_id, finish_date=None):
+        return True
+
+
+def test_choose_candidate_picks_by_number():
+    options = [
+        ScoredCandidate(Candidate("b1", "T1", "A"), 0.7, 0.7, 0.7),
+        ScoredCandidate(Candidate("b2", "T2", "A"), 0.6, 0.6, 0.6),
+    ]
+    assert _choose_candidate("2", options).book_id == "b2"
+
+
+def test_choose_candidate_skip_and_invalid_return_none():
+    options = [ScoredCandidate(Candidate("b1", "T1", "A"), 0.7, 0.7, 0.7)]
+    assert _choose_candidate("s", options) is None
+    assert _choose_candidate("9", options) is None
+    assert _choose_candidate("", options) is None
 
 
 def test_cli_version():
@@ -60,10 +89,23 @@ def test_cli_storygraph_status_inactive(monkeypatch):
     assert "storygraph-login" in result.stdout
 
 
-def test_cli_sync_no_dry_run_is_blocked():
-    result = runner.invoke(app, ["sync", "--no-dry-run"])
-    assert result.exit_code == 1
-    assert "not implemented" in result.stdout.lower()
+def test_cli_sync_writes_matches(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "audible_storygraph_sync.cli.finished_audiobooks",
+        lambda **kw: [Audiobook(asin="A1", title="Hyperion", authors=("Dan Simmons",))],
+    )
+    monkeypatch.setattr("audible_storygraph_sync.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr(
+        "audible_storygraph_sync.storygraph.search.StorygraphSearcher", _FakeSearcher
+    )
+    monkeypatch.setattr("audible_storygraph_sync.storygraph.client.StorygraphClient", _FakeClient)
+    monkeypatch.setattr(
+        "audible_storygraph_sync.config.sync_store_path", lambda: tmp_path / "store.json"
+    )
+    result = runner.invoke(app, ["sync"])
+    assert result.exit_code == 0
+    assert "written: 1" in result.stdout
+    assert (tmp_path / "store.json").exists()
 
 
 def test_cli_sync_no_finished_books(monkeypatch):
