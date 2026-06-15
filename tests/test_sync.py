@@ -154,15 +154,20 @@ def test_run_sync_no_match(tmp_path):
     assert outcome.no_match == ["A1"]
 
 
-def test_run_sync_ambiguous_confirmed_is_written(tmp_path):
-    cands = [
-        Candidate("b1", "A Storm of Swords", "George R.R. Martin"),
-        Candidate("b2", "A Storm of Swords", "George R.R. Martin"),
+def _ambiguous_candidates():
+    # same title, different non-blank authors, and the book has no author to
+    # disambiguate -> genuinely ambiguous (not an edition tie).
+    return [
+        Candidate("b1", "Twilight", "Stephenie Meyer"),
+        Candidate("b2", "Twilight", "Some Other Author"),
     ]
+
+
+def test_run_sync_ambiguous_confirmed_is_written(tmp_path):
     writer = _FakeWriter()
     outcome = run_sync(
-        [_book("A Storm of Swords", "George R.R. Martin", asin="A1")],
-        search_fn=lambda q: cands,
+        [_book("Twilight", asin="A1")],
+        search_fn=lambda q: _ambiguous_candidates(),
         writer=writer,
         store=_store(tmp_path),
         confirm_fn=lambda book, result: result.best.candidate,
@@ -171,13 +176,9 @@ def test_run_sync_ambiguous_confirmed_is_written(tmp_path):
 
 
 def test_run_sync_ambiguous_skipped_when_confirm_declines(tmp_path):
-    cands = [
-        Candidate("b1", "A Storm of Swords", "George R.R. Martin"),
-        Candidate("b2", "A Storm of Swords", "George R.R. Martin"),
-    ]
     outcome = run_sync(
-        [_book("A Storm of Swords", "George R.R. Martin", asin="A1")],
-        search_fn=lambda q: cands,
+        [_book("Twilight", asin="A1")],
+        search_fn=lambda q: _ambiguous_candidates(),
         writer=_FakeWriter(),
         store=_store(tmp_path),
         confirm_fn=lambda book, result: None,

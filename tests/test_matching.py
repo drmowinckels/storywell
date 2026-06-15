@@ -47,14 +47,33 @@ def test_single_candidate_without_author_matches_on_title_alone():
     assert result.best.author_score == 0.0
 
 
-def test_two_near_identical_editions_are_ambiguous():
+def test_identical_editions_resolve_to_top_match():
     cands = [
         Candidate("b1", "A Storm of Swords", "George R.R. Martin"),
         Candidate("b2", "A Storm of Swords", "George R.R. Martin"),
     ]
     result = match_book("A Storm of Swords", "George R.R. Martin", cands)
+    assert result.status is MatchStatus.MATCH
+    assert result.best.candidate.book_id == "b1"
+
+
+def test_edition_tie_with_blank_runner_up_author_resolves_to_match():
+    cands = [
+        Candidate("b1", "The Will of the Many", "James Islington"),
+        Candidate("b2", "The Will of the Many", ""),
+    ]
+    result = match_book("The Will of the Many", "James Islington", cands)
+    assert result.status is MatchStatus.MATCH
+    assert result.best.candidate.book_id == "b1"
+
+
+def test_same_title_different_authors_stays_ambiguous():
+    cands = [
+        Candidate("b1", "Twilight", "Stephenie Meyer"),
+        Candidate("b2", "Twilight", "Some Other Author"),
+    ]
+    result = match_book("Twilight", "", cands)
     assert result.status is MatchStatus.AMBIGUOUS
-    assert len(result.alternatives) >= 1
 
 
 def test_plausible_but_weak_single_candidate_is_ambiguous():

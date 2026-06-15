@@ -111,6 +111,19 @@ def score_candidate(title: str, author: str, candidate: Candidate) -> ScoredCand
     return ScoredCandidate(candidate, score, title_score, author_score)
 
 
+def _same_work(a: Candidate, b: Candidate) -> bool:
+    """Two candidates that are the same book (different editions/listings).
+
+    A close-scoring runner-up with the same title and a matching-or-blank author is
+    an edition/listing duplicate, not a genuinely different book, so it should not
+    make the match ambiguous.
+    """
+    if normalize_title(a.title) != normalize_title(b.title):
+        return False
+    author_a, author_b = normalize_author(a.author), normalize_author(b.author)
+    return author_a == author_b or not author_a or not author_b
+
+
 def classify(scored: list[ScoredCandidate]) -> MatchResult:
     if not scored:
         return MatchResult(MatchStatus.NO_MATCH, None)
@@ -122,8 +135,12 @@ def classify(scored: list[ScoredCandidate]) -> MatchResult:
     if best.score < MIN_PLAUSIBLE:
         return MatchResult(MatchStatus.NO_MATCH, None, alternatives)
 
-    runner_up = ranked[1].score if len(ranked) > 1 else 0.0
-    if best.score >= HIGH_CONFIDENCE and (best.score - runner_up) >= AMBIGUOUS_MARGIN:
+    runner_up = ranked[1] if len(ranked) > 1 else None
+    runner_up_score = runner_up.score if runner_up else 0.0
+    decisive = (best.score - runner_up_score) >= AMBIGUOUS_MARGIN
+    edition_tie = runner_up is not None and _same_work(best.candidate, runner_up.candidate)
+
+    if best.score >= HIGH_CONFIDENCE and (decisive or edition_tie):
         return MatchResult(MatchStatus.MATCH, best, alternatives)
 
     return MatchResult(MatchStatus.AMBIGUOUS, best, alternatives)
