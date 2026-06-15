@@ -66,18 +66,23 @@ v0.2 behaviour) under-counts their actual reading.
   editable checklist, never auto-commit parsed titles.
 - _Wrong omnibus matched_ (the description we parse is from the wrong SG listing) → show
   which omnibus page was used; let the user reject.
-- _Double-counting_ if both the omnibus and its books end up read → offer to un-mark the
-  omnibus; key the store on child identity.
+- _Double-counting_ if both the omnibus and its books end up read → accepted per decision 3
+  (omnibus stays marked); key the store on child identity so reruns stay idempotent.
 - _Detection false-positives_ (a single book with "Collection" in the title) → keyword
   list + the user confirming before any write.
 
-**Open questions**
+**Resolved decisions (AM, 2026-06-15)**
 
-1. Surface as part of `sync` (auto-detect mid-run) or a separate `sync-collections` command?
-   _(Lean: separate command — collections are interactive and few.)_
-2. Finish date for contained books: the collection's `finished_at` for all, or leave
-   undated? _(Lean: collection's finish date for all.)_
-3. Auto-offer to un-mark the already-synced omnibuses (Dickens ×2, Wool)? _(Lean: yes, with a confirm.)_
+1. **CLI surface:** a separate `sync-collections` command (keep the main `sync` fast/bulk;
+   collections are interactive and few).
+2. **Finish date:** leave contained books **undated** — mark them read, set no finish date.
+   (Implementation note: StoryGraph's status=read auto-creates a read instance dated today;
+   "undated" may require removing that date after marking, or accepting a today-dated read —
+   to be settled when building.)
+3. **Already-synced omnibuses:** leave them marked as themselves — do **not** un-mark.
+   (Accepts that an omnibus and its contained books may both read; no destructive deletes.)
+4. **Checklist default:** proposed titles start **unchecked** — the user ticks the ones to
+   include (safer against a noisy parse).
 
 ## 6. First slice (stacked PR #1) — detection + parser, read-only
 
