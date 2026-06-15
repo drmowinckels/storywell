@@ -95,6 +95,98 @@ def audible_list(
     console.print(build_table(books))
 
 
+def build_match_table(items: list) -> Table:
+    from .storygraph import MatchStatus
+
+    style = {
+        MatchStatus.MATCH: "green",
+        MatchStatus.AMBIGUOUS: "yellow",
+        MatchStatus.NO_MATCH: "red",
+    }
+    table = Table(title=f"StoryGraph match plan ({len(items)})", show_lines=False)
+    table.add_column("Audible title", overflow="fold")
+    table.add_column("Status")
+    table.add_column("StoryGraph match", overflow="fold")
+    table.add_column("Score", justify="right")
+
+    for item in items:
+        result = item.result
+        best = result.best
+        match_text = f"{best.candidate.title} ({best.candidate.book_id})" if best else "-"
+        score_text = f"{best.score:.2f}" if best else "-"
+        table.add_row(
+            item.book.title,
+            f"[{style[result.status]}]{result.status.value}[/]",
+            match_text,
+            score_text,
+        )
+    return table
+
+
+@app.command("sync")
+def sync(
+    threshold: float = typer.Option(0.95, "--threshold", "-t", min=0.0, max=1.0),
+    auth_file: Path | None = typer.Option(None, "--auth-file"),
+    profile: str | None = typer.Option(None, "--profile"),
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
+    ),
+    limit: int = typer.Option(
+        0, "--limit", min=0, help="Process at most N finished books (0 = all)."
+    ),
+    headless: bool = typer.Option(True, "--headless/--headed"),
+) -> None:
+    """Match finished Audible books to StoryGraph editions (preview only for now)."""
+    from .storygraph import (
+        MatchStatus,
+        StorygraphDependencyError,
+        is_authenticated,
+        plan_sync,
+        summarize,
+    )
+    from .storygraph.search import StorygraphSearcher
+
+    if not dry_run:
+        console.print(
+            "Write-back is not implemented yet (lands in v0.2 slice 3). Re-run with --dry-run.",
+            style="yellow",
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        books = finished_audiobooks(threshold=threshold, auth_file=auth_file, profile=profile)
+    except (AuthFileNotFound, LibraryFetchError) as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    if not books:
+        console.print("No finished audiobooks found.", style="yellow")
+        return
+
+    if limit:
+        books = books[:limit]
+
+    try:
+        if not is_authenticated():
+            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
+            raise typer.Exit(code=1)
+    except StorygraphDependencyError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    with StorygraphSearcher(headless=headless) as searcher:
+        items = plan_sync(books, searcher.search)
+
+    console.print(build_match_table(items))
+    counts = summarize(items)
+    console.print(
+        f"match: {counts[MatchStatus.MATCH]}  "
+        f"ambiguous: {counts[MatchStatus.AMBIGUOUS]}  "
+        f"no match: {counts[MatchStatus.NO_MATCH]}",
+        style="cyan",
+    )
+
+
 @app.command("storygraph-login")
 def storygraph_login() -> None:
     """Open a browser to log in to StoryGraph and save the session for syncing."""
