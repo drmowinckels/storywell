@@ -10,10 +10,9 @@ from ..config import ensure_config_dir, storygraph_state_path
 BASE_URL = "https://app.thestorygraph.com"
 SIGN_IN_URL = f"{BASE_URL}/users/sign_in"
 SIGN_IN_PATH = "/users/sign_in"
-PROFILE_LINK_SELECTOR = "a[href*='/profile/']"
-LOGIN_TIMEOUT_MS = 5 * 60 * 1000
 
 PlaywrightFactory = Callable[[], Any]
+WaitForUser = Callable[[], None]
 
 
 class StorygraphDependencyError(RuntimeError):
@@ -39,8 +38,8 @@ def _load_sync_playwright() -> PlaywrightFactory:
     return sync_playwright
 
 
-def _is_signed_in(url: str, has_profile_link: bool) -> bool:
-    return has_profile_link and SIGN_IN_PATH not in url
+def _is_signed_in(url: str) -> bool:
+    return SIGN_IN_PATH not in url
 
 
 def _secure_file(path: Path) -> None:
@@ -48,20 +47,29 @@ def _secure_file(path: Path) -> None:
         path.chmod(0o600)
 
 
+def _default_wait_for_user() -> None:
+    input(
+        "\nA browser window has opened on the StoryGraph sign-in page.\n"
+        "Log in there (email/password, 2FA, Cloudflare), then return here and press Enter... "
+    )
+
+
 def login(
     state_path: Path | None = None,
     *,
     playwright_factory: PlaywrightFactory | None = None,
-    timeout_ms: int = LOGIN_TIMEOUT_MS,
+    wait_for_user: WaitForUser | None = None,
 ) -> Path:
     """Open a headed browser, wait for a manual StoryGraph login, persist the session.
 
-    The user logs in by hand (handling 2FA and Cloudflare); we never touch their
-    password. On success the storage state (cookies) is written to ``state_path``.
+    The user logs in by hand (handling 2FA and Cloudflare) and presses Enter when done;
+    we never touch their password. The storage state (cookies) is written to ``state_path``.
+    Detection is by Enter + a sign-in-redirect check, not by a fragile DOM selector.
     """
     state_path = state_path or storygraph_state_path()
     ensure_config_dir()
     factory = playwright_factory or _load_sync_playwright()
+    wait = wait_for_user or _default_wait_for_user
 
     with factory() as pw:
         browser = pw.chromium.launch(headless=False)
@@ -69,18 +77,19 @@ def login(
             context = browser.new_context()
             page = context.new_page()
             page.goto(SIGN_IN_URL)
-            try:
-                page.wait_for_selector(PROFILE_LINK_SELECTOR, timeout=timeout_ms)
-            except Exception as err:
-                raise StorygraphAuthError(
-                    "Timed out waiting for a StoryGraph sign-in. Re-run "
-                    "`storygraph-login` and complete the login in the browser window."
-                ) from err
-            context.storage_state(path=str(state_path))
+            wait()
+            state = context.storage_state(path=str(state_path))
+            final_url = page.url
         finally:
             browser.close()
 
     _secure_file(state_path)
+    if SIGN_IN_PATH in final_url or not state.get("cookies"):
+        raise StorygraphAuthError(
+            "Login didn't complete — the browser is still on the sign-in page or no session "
+            "cookies were saved. Re-run `storygraph-login` and finish logging in (wait for "
+            "your StoryGraph home page to load) before pressing Enter."
+        )
     return state_path
 
 
@@ -90,7 +99,11 @@ def is_authenticated(
     playwright_factory: PlaywrightFactory | None = None,
     headless: bool = True,
 ) -> bool:
-    """Return True if the saved session still has an authenticated StoryGraph login."""
+    """Return True if the saved session still has an authenticated StoryGraph login.
+
+    Logged-out visits to the app root redirect to ``/users/sign_in``; staying anywhere
+    else means the session is live.
+    """
     state_path = state_path or storygraph_state_path()
     if not Path(state_path).exists():
         return False
@@ -102,7 +115,6 @@ def is_authenticated(
             context = browser.new_context(storage_state=str(state_path))
             page = context.new_page()
             page.goto(BASE_URL)
-            has_profile = page.query_selector(PROFILE_LINK_SELECTOR) is not None
-            return _is_signed_in(page.url, has_profile)
+            return _is_signed_in(page.url)
         finally:
             browser.close()

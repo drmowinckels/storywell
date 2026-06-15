@@ -6,23 +6,18 @@ import pytest
 
 from audible_storygraph_sync.storygraph import session
 from audible_storygraph_sync.storygraph.session import (
+    SIGN_IN_URL,
     StorygraphAuthError,
     StorygraphDependencyError,
     _is_signed_in,
+    is_authenticated,
+    login,
 )
 
 
 class _FakePage:
-    def __init__(
-        self,
-        *,
-        url="https://app.thestorygraph.com/",
-        has_profile=True,
-        wait_raises=False,
-    ):
+    def __init__(self, *, url="https://app.thestorygraph.com/"):
         self._url = url
-        self._has_profile = has_profile
-        self._wait_raises = wait_raises
         self.goto_urls: list[str] = []
 
     @property
@@ -32,19 +27,12 @@ class _FakePage:
     def goto(self, url):
         self.goto_urls.append(url)
 
-    def wait_for_selector(self, selector, timeout=None):
-        if self._wait_raises:
-            raise TimeoutError("selector not found")
-        return object()
-
-    def query_selector(self, selector):
-        return object() if self._has_profile else None
-
 
 class _FakeContext:
-    def __init__(self, page, *, storage_state=None):
+    def __init__(self, page, *, storage_state=None, cookies=("remember_user_token",)):
         self._page = page
         self.storage_state_in = storage_state
+        self._cookies = cookies
         self.saved_to = None
 
     def new_page(self):
@@ -52,17 +40,21 @@ class _FakeContext:
 
     def storage_state(self, path=None):
         self.saved_to = path
-        Path(path).write_text(json.dumps({"cookies": [{"name": "remember_user_token"}]}))
+        state = {"cookies": [{"name": name} for name in self._cookies]}
+        if path:
+            Path(path).write_text(json.dumps(state))
+        return state
 
 
 class _FakeBrowser:
-    def __init__(self, page):
+    def __init__(self, page, cookies=("remember_user_token",)):
         self._page = page
+        self._cookies = cookies
         self.closed = False
         self.contexts: list[_FakeContext] = []
 
     def new_context(self, **kwargs):
-        ctx = _FakeContext(self._page, **kwargs)
+        ctx = _FakeContext(self._page, cookies=self._cookies, **kwargs)
         self.contexts.append(ctx)
         return ctx
 
@@ -86,8 +78,8 @@ class _FakePlaywright:
 
 
 class _FakeFactory:
-    def __init__(self, page):
-        self.browser = _FakeBrowser(page)
+    def __init__(self, page, cookies=("remember_user_token",)):
+        self.browser = _FakeBrowser(page, cookies=cookies)
         self.pw = _FakePlaywright(self.browser)
 
     def __call__(self):
@@ -101,56 +93,71 @@ class _FakeFactory:
 
 
 def test_is_signed_in_predicate():
-    assert _is_signed_in("https://app.thestorygraph.com/", True) is True
-    assert _is_signed_in("https://app.thestorygraph.com/users/sign_in", True) is False
-    assert _is_signed_in("https://app.thestorygraph.com/", False) is False
+    assert _is_signed_in("https://app.thestorygraph.com/") is True
+    assert _is_signed_in("https://app.thestorygraph.com/dashboard") is True
+    assert _is_signed_in("https://app.thestorygraph.com/users/sign_in") is False
 
 
 def test_login_saves_state_and_closes_browser(tmp_path):
     state = tmp_path / "state.json"
-    page = _FakePage(has_profile=True)
+    page = _FakePage()
     factory = _FakeFactory(page)
-    result = session.login(state, playwright_factory=factory, timeout_ms=1000)
+    result = login(state, playwright_factory=factory, wait_for_user=lambda: None)
     assert result == state
     assert state.exists()
     assert factory.browser.closed is True
     assert factory.pw.chromium.launch_kwargs[0]["headless"] is False
-    assert session.SIGN_IN_URL in page.goto_urls
+    assert SIGN_IN_URL in page.goto_urls
+
+
+def test_login_calls_wait_for_user(tmp_path):
+    called = []
+    login(
+        tmp_path / "state.json",
+        playwright_factory=_FakeFactory(_FakePage()),
+        wait_for_user=lambda: called.append(True),
+    )
+    assert called == [True]
 
 
 def test_login_secures_state_file_permissions(tmp_path):
     state = tmp_path / "state.json"
-    session.login(state, playwright_factory=_FakeFactory(_FakePage()), timeout_ms=10)
+    login(state, playwright_factory=_FakeFactory(_FakePage()), wait_for_user=lambda: None)
     assert (state.stat().st_mode & 0o777) == 0o600
 
 
-def test_login_timeout_raises_auth_error_and_cleans_up(tmp_path):
-    state = tmp_path / "state.json"
-    factory = _FakeFactory(_FakePage(wait_raises=True))
-    with pytest.raises(StorygraphAuthError, match="Timed out"):
-        session.login(state, playwright_factory=factory, timeout_ms=10)
+def test_login_raises_when_still_on_sign_in(tmp_path):
+    page = _FakePage(url="https://app.thestorygraph.com/users/sign_in")
+    factory = _FakeFactory(page)
+    with pytest.raises(StorygraphAuthError, match="didn't complete"):
+        login(tmp_path / "state.json", playwright_factory=factory, wait_for_user=lambda: None)
     assert factory.browser.closed is True
-    assert not state.exists()
+
+
+def test_login_raises_when_no_cookies(tmp_path):
+    factory = _FakeFactory(_FakePage(), cookies=())
+    with pytest.raises(StorygraphAuthError, match="didn't complete"):
+        login(tmp_path / "state.json", playwright_factory=factory, wait_for_user=lambda: None)
 
 
 def test_is_authenticated_false_when_no_state(tmp_path):
     missing = tmp_path / "missing.json"
-    assert session.is_authenticated(missing, playwright_factory=_FakeFactory(_FakePage())) is False
+    assert is_authenticated(missing, playwright_factory=_FakeFactory(_FakePage())) is False
 
 
 def test_is_authenticated_true_for_valid_session(tmp_path):
     state = tmp_path / "state.json"
     state.write_text("{}")
-    page = _FakePage(url="https://app.thestorygraph.com/", has_profile=True)
-    assert session.is_authenticated(state, playwright_factory=_FakeFactory(page)) is True
+    page = _FakePage(url="https://app.thestorygraph.com/")
+    assert is_authenticated(state, playwright_factory=_FakeFactory(page)) is True
 
 
 def test_is_authenticated_false_when_redirected_to_sign_in(tmp_path):
     state = tmp_path / "state.json"
     state.write_text("{}")
-    page = _FakePage(url="https://app.thestorygraph.com/users/sign_in", has_profile=False)
+    page = _FakePage(url="https://app.thestorygraph.com/users/sign_in")
     factory = _FakeFactory(page)
-    assert session.is_authenticated(state, playwright_factory=factory) is False
+    assert is_authenticated(state, playwright_factory=factory) is False
     assert factory.browser.closed is True
 
 
@@ -158,7 +165,7 @@ def test_is_authenticated_loads_storage_state_into_context(tmp_path):
     state = tmp_path / "state.json"
     state.write_text("{}")
     factory = _FakeFactory(_FakePage())
-    session.is_authenticated(state, playwright_factory=factory)
+    is_authenticated(state, playwright_factory=factory)
     assert factory.browser.contexts[0].storage_state_in == str(state)
 
 
