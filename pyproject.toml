@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "audible-storygraph-sync"
+name = "storywell"
 version = "0.1.0a0"
-description = "Sync finished audiobooks from Audible to The StoryGraph."
+description = "Sync finished books from Audible, Goodreads & more into The StoryGraph."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "Athanasia Monika Mowinckel", email = "a.m.mowinckel@psykologi.uio.no" }]
-keywords = ["audible", "storygraph", "audiobooks", "sync"]
+keywords = ["storygraph", "audible", "goodreads", "audiobooks", "books", "reading", "sync"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -38,14 +38,14 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/drmowinckels/audible-storygraph-sync"
-Issues = "https://github.com/drmowinckels/audible-storygraph-sync/issues"
+Homepage = "https://github.com/drmowinckels/storywell"
+Issues = "https://github.com/drmowinckels/storywell/issues"
 
 [project.scripts]
-audible-storygraph-sync = "audible_storygraph_sync.cli:app"
+storywell = "storywell.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/audible_storygraph_sync"]
+packages = ["src/storywell"]
 
 [tool.ruff]
 line-length = 100

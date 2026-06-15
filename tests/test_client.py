@@ -1,6 +1,6 @@
 from datetime import date
 
-from audible_storygraph_sync.storygraph.client import (
+from storywell.storygraph.client import (
     DATE_DAY_SELECTOR,
     DATE_MONTH_SELECTOR,
     DATE_YEAR_SELECTOR,

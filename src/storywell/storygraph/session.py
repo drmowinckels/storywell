@@ -30,8 +30,8 @@ def _load_sync_playwright() -> PlaywrightFactory:
         raise StorygraphDependencyError(
             "Playwright is required for StoryGraph sync but is not installed.\n"
             "Install it with:\n"
-            "  pipx inject audible-storygraph-sync playwright\n"
-            "  (or: pip install 'audible-storygraph-sync[storygraph]')\n"
+            "  pipx inject storywell playwright\n"
+            "  (or: pip install 'storywell[storygraph]')\n"
             "then download the browser:\n"
             "  playwright install chromium"
         ) from err

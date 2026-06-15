@@ -1,6 +1,6 @@
 from datetime import date
 
-from audible_storygraph_sync.storygraph.store import SyncStore
+from storywell.storygraph.store import SyncStore
 
 
 def test_load_missing_file_gives_empty_store(tmp_path):

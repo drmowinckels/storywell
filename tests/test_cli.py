@@ -1,11 +1,22 @@
 from typer.testing import CliRunner
 
-from audible_storygraph_sync.cli import _choose_candidate, app
-from audible_storygraph_sync.models import Audiobook
-from audible_storygraph_sync.storygraph import StorygraphDependencyError
-from audible_storygraph_sync.storygraph.matching import Candidate, ScoredCandidate
+from storywell.cli import _choose_candidate, app
+from storywell.models import SourceBook
+from storywell.storygraph import StorygraphDependencyError
+from storywell.storygraph.matching import Candidate, ScoredCandidate
 
 runner = CliRunner()
+
+
+class _FakeBrowser:
+    def __init__(self, *args, **kwargs):
+        self.page = object()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
 
 
 class _FakeSearcher:
@@ -36,6 +47,12 @@ class _FakeClient:
         return True
 
 
+def _one_book(*a, **k):
+    return [
+        SourceBook(source="audible", source_id="A1", title="Hyperion", authors=("Dan Simmons",))
+    ]
+
+
 def test_choose_candidate_picks_by_number():
     options = [
         ScoredCandidate(Candidate("b1", "T1", "A"), 0.7, 0.7, 0.7),
@@ -54,12 +71,35 @@ def test_choose_candidate_skip_and_invalid_return_none():
 def test_cli_version():
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "audible-storygraph-sync" in result.stdout
+    assert "storywell" in result.stdout
+
+
+def test_cli_sources_lists_audible():
+    result = runner.invoke(app, ["sources"])
+    assert result.exit_code == 0
+    assert "audible" in result.stdout
+
+
+def test_cli_migrate_store_reports_counts(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    legacy = tmp_path / "audible-storygraph-sync"
+    legacy.mkdir(parents=True)
+    (legacy / "sync-store.json").write_text('{"mappings": {"B01": "sg1"}, "synced": {}}')
+    result = runner.invoke(app, ["migrate-store"])
+    assert result.exit_code == 0
+    assert "Migrated sync history: 1 matches" in result.stdout
+
+
+def test_cli_migrate_store_nothing_to_do(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    result = runner.invoke(app, ["migrate-store"])
+    assert result.exit_code == 0
+    assert "Nothing to migrate" in result.stdout
 
 
 def test_cli_storygraph_login_success(monkeypatch, tmp_path):
     saved = tmp_path / "state.json"
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.login", lambda: saved)
+    monkeypatch.setattr("storywell.storygraph.login", lambda: saved)
     result = runner.invoke(app, ["storygraph-login"])
     assert result.exit_code == 0
     assert "Saved StoryGraph session" in result.stdout
@@ -69,39 +109,33 @@ def test_cli_storygraph_login_dependency_error(monkeypatch):
     def boom():
         raise StorygraphDependencyError("install playwright first")
 
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.login", boom)
+    monkeypatch.setattr("storywell.storygraph.login", boom)
     result = runner.invoke(app, ["storygraph-login"])
     assert result.exit_code == 1
     assert "install playwright first" in result.stdout
 
 
 def test_cli_storygraph_status_active(monkeypatch):
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
     result = runner.invoke(app, ["storygraph-status"])
     assert result.exit_code == 0
     assert "active" in result.stdout.lower()
 
 
 def test_cli_storygraph_status_inactive(monkeypatch):
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.is_authenticated", lambda: False)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: False)
     result = runner.invoke(app, ["storygraph-status"])
     assert result.exit_code == 1
     assert "storygraph-login" in result.stdout
 
 
 def test_cli_sync_writes_matches(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        "audible_storygraph_sync.cli.finished_audiobooks",
-        lambda **kw: [Audiobook(asin="A1", title="Hyperion", authors=("Dan Simmons",))],
-    )
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.is_authenticated", lambda: True)
-    monkeypatch.setattr(
-        "audible_storygraph_sync.storygraph.search.StorygraphSearcher", _FakeSearcher
-    )
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.client.StorygraphClient", _FakeClient)
-    monkeypatch.setattr(
-        "audible_storygraph_sync.config.sync_store_path", lambda: tmp_path / "store.json"
-    )
+    monkeypatch.setattr("storywell.cli._load_finished", _one_book)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
+    monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeSearcher)
+    monkeypatch.setattr("storywell.storygraph.client.StorygraphClient", _FakeClient)
+    monkeypatch.setattr("storywell.config.sync_store_path", lambda: tmp_path / "store.json")
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 0
     assert "written: 1" in result.stdout
@@ -109,32 +143,24 @@ def test_cli_sync_writes_matches(monkeypatch, tmp_path):
 
 
 def test_cli_sync_no_finished_books(monkeypatch):
-    monkeypatch.setattr("audible_storygraph_sync.cli.finished_audiobooks", lambda **kw: [])
+    monkeypatch.setattr("storywell.cli._load_finished", lambda *a, **k: [])
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 0
-    assert "No finished audiobooks" in result.stdout
+    assert "No finished books" in result.stdout
 
 
 def test_cli_sync_requires_session(monkeypatch):
-    monkeypatch.setattr(
-        "audible_storygraph_sync.cli.finished_audiobooks",
-        lambda **kw: [Audiobook(asin="A", title="X", authors=())],
-    )
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.is_authenticated", lambda: False)
+    monkeypatch.setattr("storywell.cli._load_finished", _one_book)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: False)
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 1
     assert "storygraph-login" in result.stdout
 
 
 def test_cli_sync_dry_run_reports_matches(monkeypatch):
-    monkeypatch.setattr(
-        "audible_storygraph_sync.cli.finished_audiobooks",
-        lambda **kw: [Audiobook(asin="A", title="Hyperion", authors=("Dan Simmons",))],
-    )
-    monkeypatch.setattr("audible_storygraph_sync.storygraph.is_authenticated", lambda: True)
-    monkeypatch.setattr(
-        "audible_storygraph_sync.storygraph.search.StorygraphSearcher", _FakeSearcher
-    )
+    monkeypatch.setattr("storywell.cli._load_finished", _one_book)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeSearcher)
     result = runner.invoke(app, ["sync", "--dry-run"])
     assert result.exit_code == 0
     assert "match:" in result.stdout.lower()

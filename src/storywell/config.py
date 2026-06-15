@@ -4,7 +4,7 @@ import contextlib
 import os
 from pathlib import Path
 
-APP_DIR_NAME = "audible-storygraph-sync"
+APP_DIR_NAME = "storywell"
 STORYGRAPH_STATE_FILENAME = "storygraph-state.json"
 SYNC_STORE_FILENAME = "sync-store.json"
 

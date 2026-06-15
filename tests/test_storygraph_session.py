@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from audible_storygraph_sync.storygraph import session
-from audible_storygraph_sync.storygraph.session import (
+from storywell.storygraph import session
+from storywell.storygraph.session import (
     SIGN_IN_URL,
     StorygraphAuthError,
     StorygraphBrowser,

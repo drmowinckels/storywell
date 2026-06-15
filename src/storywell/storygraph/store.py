@@ -17,10 +17,12 @@ def _norm_date(finished_on: date | str | None) -> str:
 
 @dataclass
 class SyncStore:
-    """Persisted ASIN -> StoryGraph mapping and last-synced finish dates.
+    """Persisted source-key -> StoryGraph mapping and last-synced finish dates.
 
-    ``mappings`` lets a confirmed match skip search forever; ``synced`` makes
-    re-runs idempotent (a book is re-synced only if its finish date changed).
+    Keys are ``SourceBook.key`` values (e.g. ``audible:B0...``), so one store can
+    hold every vendor without collisions. ``mappings`` lets a confirmed match skip
+    search forever; ``synced`` makes re-runs idempotent (a book is re-synced only
+    if its finish date changed).
     """
 
     path: Path
@@ -39,18 +41,18 @@ class SyncStore:
             synced=dict(data.get("synced", {})),
         )
 
-    def cached_book_id(self, asin: str) -> str | None:
-        return self.mappings.get(asin)
+    def cached_book_id(self, key: str) -> str | None:
+        return self.mappings.get(key)
 
-    def is_synced(self, asin: str, finished_on: date | str | None) -> bool:
-        return asin in self.synced and self.synced[asin] == _norm_date(finished_on)
+    def is_synced(self, key: str, finished_on: date | str | None) -> bool:
+        return key in self.synced and self.synced[key] == _norm_date(finished_on)
 
-    def remember_match(self, asin: str, book_id: str) -> None:
-        self.mappings[asin] = book_id
+    def remember_match(self, key: str, book_id: str) -> None:
+        self.mappings[key] = book_id
 
-    def record(self, asin: str, book_id: str, finished_on: date | str | None) -> None:
-        self.mappings[asin] = book_id
-        self.synced[asin] = _norm_date(finished_on)
+    def record(self, key: str, book_id: str, finished_on: date | str | None) -> None:
+        self.mappings[key] = book_id
+        self.synced[key] = _norm_date(finished_on)
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

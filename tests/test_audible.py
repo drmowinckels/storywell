@@ -5,13 +5,13 @@ from unittest.mock import MagicMock, patch
 import audible.exceptions
 import pytest
 
-from audible_storygraph_sync.audible_client import (
+from storywell.sources.audible import (
     PAGE_SIZE,
     AuthFileNotFound,
     LibraryFetchError,
     fetch_library_items,
     filter_finished,
-    item_to_audiobook,
+    item_to_book,
     locate_auth_file,
     parse_finished_at,
     parse_is_finished,
@@ -43,22 +43,22 @@ def make_item(
     }
 
 
-def test_item_to_audiobook_extracts_contributors():
-    book = item_to_audiobook(
-        make_item(authors=("Ursula Le Guin",), narrators=("Carrington MacDuffie",))
-    )
-    assert book.asin == "B0EXAMPLE01"
+def test_item_to_book_extracts_contributors():
+    book = item_to_book(make_item(authors=("Ursula Le Guin",), narrators=("Carrington MacDuffie",)))
+    assert book.source_id == "B0EXAMPLE01"
+    assert book.source == "audible"
+    assert book.key == "audible:B0EXAMPLE01"
     assert book.authors == ("Ursula Le Guin",)
     assert book.narrators == ("Carrington MacDuffie",)
 
 
-def test_item_to_audiobook_parses_finished_at_iso_with_z():
-    book = item_to_audiobook(make_item(finished_at_timestamp="2025-09-12T08:30:00Z"))
+def test_item_to_book_parses_finished_at_iso_with_z():
+    book = item_to_book(make_item(finished_at_timestamp="2025-09-12T08:30:00Z"))
     assert book.finished_at == datetime(2025, 9, 12, 8, 30, tzinfo=UTC)
 
 
-def test_item_to_audiobook_handles_missing_optional_fields():
-    book = item_to_audiobook({"asin": "B0X", "title": "Bare"})
+def test_item_to_book_handles_missing_optional_fields():
+    book = item_to_book({"asin": "B0X", "title": "Bare"})
     assert book.authors == ()
     assert book.narrators == ()
     assert book.percent_complete == 0.0
@@ -109,7 +109,7 @@ def test_parse_is_finished_true_when_either_source_is_finished():
 
 def test_filter_finished_includes_is_finished_true():
     items = [make_item(asin="A1", is_finished=True, percent_complete=12)]
-    assert [b.asin for b in filter_finished(items)] == ["A1"]
+    assert [b.source_id for b in filter_finished(items)] == ["A1"]
 
 
 def test_filter_finished_includes_percent_above_threshold():
@@ -118,13 +118,13 @@ def test_filter_finished_includes_percent_above_threshold():
         make_item(asin="A2", percent_complete=95),
         make_item(asin="A3", percent_complete=100),
     ]
-    assert {b.asin for b in filter_finished(items, threshold=0.95)} == {"A2", "A3"}
+    assert {b.source_id for b in filter_finished(items, threshold=0.95)} == {"A2", "A3"}
 
 
 def test_filter_finished_threshold_is_configurable():
     items = [make_item(asin="A1", percent_complete=80)]
     assert filter_finished(items, threshold=0.95) == []
-    assert [b.asin for b in filter_finished(items, threshold=0.75)] == ["A1"]
+    assert [b.source_id for b in filter_finished(items, threshold=0.75)] == ["A1"]
 
 
 def test_filter_finished_skips_unstarted_books():
@@ -224,9 +224,9 @@ class _FakeClient:
 
 def _patches(client):
     return (
-        patch("audible_storygraph_sync.audible_client.audible.Client", return_value=client),
+        patch("storywell.sources.audible.audible.Client", return_value=client),
         patch(
-            "audible_storygraph_sync.audible_client.audible.Authenticator.from_file",
+            "storywell.sources.audible.audible.Authenticator.from_file",
             return_value=MagicMock(),
         ),
     )
@@ -288,7 +288,7 @@ def test_fetch_library_items_wraps_auth_load_failure(tmp_path):
     auth.write_text("{}")
     with (
         patch(
-            "audible_storygraph_sync.audible_client.audible.Authenticator.from_file",
+            "storywell.sources.audible.audible.Authenticator.from_file",
             side_effect=audible.exceptions.NoRefreshToken(),
         ),
         pytest.raises(LibraryFetchError, match="Could not load Audible auth"),

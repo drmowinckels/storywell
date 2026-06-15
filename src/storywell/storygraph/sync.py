@@ -5,12 +5,12 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Protocol
 
-from ..models import Audiobook
+from ..models import SourceBook
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
 from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
-ConfirmFn = Callable[[Audiobook, MatchResult], "Candidate | None"]
+ConfirmFn = Callable[[SourceBook, MatchResult], "Candidate | None"]
 
 
 class Writer(Protocol):
@@ -19,7 +19,7 @@ class Writer(Protocol):
 
 @dataclass(frozen=True)
 class SyncPlanItem:
-    book: Audiobook
+    book: SourceBook
     result: MatchResult
 
 
@@ -33,12 +33,12 @@ class SyncOutcome:
     failed: list[str] = field(default_factory=list)
 
 
-def query_for(book: Audiobook) -> str:
+def query_for(book: SourceBook) -> str:
     author = book.authors[0] if book.authors else ""
     return f"{search_title(book.title)} {author}".strip()
 
 
-def plan_sync(books: Iterable[Audiobook], search_fn: SearchFn) -> list[SyncPlanItem]:
+def plan_sync(books: Iterable[SourceBook], search_fn: SearchFn) -> list[SyncPlanItem]:
     items: list[SyncPlanItem] = []
     for book in books:
         candidates = search_fn(query_for(book))
@@ -55,12 +55,12 @@ def summarize(items: Iterable[SyncPlanItem]) -> dict[MatchStatus, int]:
     return counts
 
 
-def _finish_date(book: Audiobook) -> date | None:
+def _finish_date(book: SourceBook) -> date | None:
     return book.finished_at.date() if book.finished_at else None
 
 
 def resolve_match(
-    book: Audiobook, result: MatchResult, confirm_fn: ConfirmFn | None
+    book: SourceBook, result: MatchResult, confirm_fn: ConfirmFn | None
 ) -> Candidate | None:
     if result.status is MatchStatus.MATCH and result.best is not None:
         return result.best.candidate
@@ -70,7 +70,7 @@ def resolve_match(
 
 
 def run_sync(
-    books: Iterable[Audiobook],
+    books: Iterable[SourceBook],
     *,
     search_fn: SearchFn,
     writer: Writer,
@@ -81,32 +81,32 @@ def run_sync(
     outcome = SyncOutcome()
     for book in books:
         finished_on = _finish_date(book)
-        if store.is_synced(book.asin, finished_on):
-            outcome.skipped_synced.append(book.asin)
+        if store.is_synced(book.key, finished_on):
+            outcome.skipped_synced.append(book.key)
             continue
 
-        book_id = store.cached_book_id(book.asin)
+        book_id = store.cached_book_id(book.key)
         if book_id is None:
             author = book.authors[0] if book.authors else ""
             result = match_book(book.title, author, search_fn(query_for(book)))
             chosen = resolve_match(book, result, confirm_fn)
             if chosen is None:
                 if result.status is MatchStatus.NO_MATCH:
-                    outcome.no_match.append(book.asin)
+                    outcome.no_match.append(book.key)
                 else:
-                    outcome.ambiguous_skipped.append(book.asin)
+                    outcome.ambiguous_skipped.append(book.key)
                 continue
             book_id = chosen.book_id
-            store.remember_match(book.asin, book_id)
+            store.remember_match(book.key, book_id)
 
         if dry_run:
-            outcome.planned.append(book.asin)
+            outcome.planned.append(book.key)
             continue
 
         if writer.mark_finished(book_id, finished_on):
-            store.record(book.asin, book_id, finished_on)
-            outcome.written.append(book.asin)
+            store.record(book.key, book_id, finished_on)
+            outcome.written.append(book.key)
         else:
-            outcome.failed.append(book.asin)
+            outcome.failed.append(book.key)
 
     return outcome
