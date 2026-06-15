@@ -17,7 +17,36 @@ from storywell.sources.audible import (
     parse_finished_at,
     parse_is_finished,
     parse_percent_complete,
+    parse_rating,
+    parse_review,
 )
+
+
+def test_parse_rating_reads_overall_rating():
+    assert parse_rating({"provided_review": {"ratings": {"overall_rating": 4}}}) == 4.0
+    assert parse_rating({}) is None
+    assert parse_rating({"provided_review": {"ratings": {"overall_rating": 0}}}) is None
+
+
+def test_parse_review_strips_html_and_unescapes():
+    item = {"provided_review": {"body": "great<br /><br />only complaint &amp; minor"}}
+    assert parse_review(item) == "great\n\nonly complaint & minor"
+
+
+def test_parse_review_none_when_empty():
+    assert parse_review({}) is None
+    assert parse_review({"provided_review": {"body": "   "}}) is None
+
+
+def test_item_to_book_carries_rating_and_review():
+    item = {
+        "asin": "A",
+        "title": "Rated Book",
+        "provided_review": {"ratings": {"overall_rating": 5}, "body": "loved it"},
+    }
+    book = item_to_book(item)
+    assert book.rating == 5.0
+    assert book.review == "loved it"
 
 
 def _coll_item(title, content_delivery_type="MultiPartBook"):

@@ -22,6 +22,8 @@ class SourceBook:
     finished_at: datetime | None = None
     is_finished: bool = False
     is_collection: bool = False
+    rating: float | None = None
+    review: str | None = None
 
     @property
     def key(self) -> str:

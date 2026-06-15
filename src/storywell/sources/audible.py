@@ -7,6 +7,7 @@ matching against StoryGraph is title/author based (see ``storywell.storygraph``)
 
 from __future__ import annotations
 
+import html
 import re
 import tomllib
 from collections.abc import Iterable
@@ -25,6 +26,7 @@ SOURCE_NAME = "audible"
 
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc,product_attrs,contributors,is_finished,percent_complete,relationships"
+    ",provided_review,reviews,review_attrs"
 )
 DEFAULT_AUTH_DIR = Path.home() / ".audible"
 DEFAULT_CONFIG_FILENAME = "config.toml"
@@ -149,6 +151,37 @@ def is_collection(item: dict[str, Any]) -> bool:
     return bool(_COLLECTION_KEYWORDS.search(title))
 
 
+def _provided_review(item: dict[str, Any]) -> dict[str, Any]:
+    review = item.get("provided_review")
+    return review if isinstance(review, dict) else {}
+
+
+def parse_rating(item: dict[str, Any]) -> float | None:
+    """The listener's own overall rating (1-5), if they rated the book."""
+    raw = (_provided_review(item).get("ratings") or {}).get("overall_rating")
+    try:
+        return float(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+_HTML_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def parse_review(item: dict[str, Any]) -> str | None:
+    """The listener's own written review as plain text (Audible bodies contain HTML)."""
+    body = _provided_review(item).get("body")
+    if not isinstance(body, str) or not body.strip():
+        return None
+    text = _HTML_BR.sub("\n", body)
+    text = _HTML_TAG.sub("", text)
+    text = html.unescape(text)
+    text = _BLANK_LINES.sub("\n\n", text).strip()
+    return text or None
+
+
 def item_to_book(item: dict[str, Any]) -> SourceBook:
     return SourceBook(
         source=SOURCE_NAME,
@@ -160,6 +193,8 @@ def item_to_book(item: dict[str, Any]) -> SourceBook:
         finished_at=parse_finished_at(item),
         is_finished=parse_is_finished(item),
         is_collection=is_collection(item),
+        rating=parse_rating(item),
+        review=parse_review(item),
     )
 
 
