@@ -1,14 +1,12 @@
 from datetime import date
 
-from audible_storygraph_sync.storygraph import client as client_mod
 from audible_storygraph_sync.storygraph.client import (
     DATE_DAY_SELECTOR,
     DATE_MONTH_SELECTOR,
     DATE_YEAR_SELECTOR,
-    EDIT_DATE_SELECTOR,
-    MARK_READ_SELECTOR,
-    READ_STATUS_SELECTOR,
-    SAVE_DATE_SELECTOR,
+    READ_STATUS_LABEL_SELECTOR,
+    STATUS_READ_FORM_SELECTOR,
+    SUBMIT_INSTANCE_SELECTOR,
     StorygraphClient,
     date_fields,
 )
@@ -18,19 +16,36 @@ def test_date_fields():
     assert date_fields(date(2023, 8, 5)) == {"day": "5", "month": "8", "year": "2023"}
 
 
-class _FakeControl:
-    def __init__(self):
-        self.clicked = False
-        self.value = None
+class _FakeLabel:
+    def __init__(self, text):
+        self._text = text
 
-    def click(self):
-        self.clicked = True
+    def inner_text(self):
+        return self._text
+
+
+class _FakeForm:
+    def __init__(self):
+        self.submitted = False
+
+    def evaluate(self, _js):
+        self.submitted = True
+
+
+class _FakeSelect:
+    def __init__(self):
+        self.value = None
 
     def select_option(self, value):
         self.value = value
 
-    def fill(self, value):
-        self.value = value
+
+class _FakeSubmit:
+    def __init__(self):
+        self.clicked = False
+
+    def click(self):
+        self.clicked = True
 
 
 class _FakePage:
@@ -38,11 +53,14 @@ class _FakePage:
         self._elements = elements
         self.goto_urls = []
 
-    def goto(self, url):
+    def goto(self, url, **kwargs):
         self.goto_urls.append(url)
 
     def query_selector(self, selector):
         return self._elements.get(selector)
+
+    def wait_for_timeout(self, _ms):
+        pass
 
 
 class _FakeContext:
@@ -99,62 +117,53 @@ def _client(page, tmp_path):
     return StorygraphClient(state_path=state, playwright_factory=_FakeFactory(page))
 
 
-def test_mark_finished_already_read_no_date(tmp_path):
-    page = _FakePage({READ_STATUS_SELECTOR: _FakeControl()})
+def test_mark_finished_already_read_is_noop(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    with _client(page, tmp_path) as client:
+        assert client.mark_finished("b1", date(2023, 8, 18)) is True
+    assert page.goto_urls == ["https://app.thestorygraph.com/books/b1"]
+
+
+def test_mark_finished_submits_status_form_when_not_read(tmp_path):
+    form = _FakeForm()
+    page = _FakePage(
+        {READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read"), STATUS_READ_FORM_SELECTOR: form}
+    )
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1") is True
-    assert page.goto_urls[0].endswith("/books/b1")
+    assert form.submitted is True
 
 
-def test_mark_finished_clicks_mark_control(tmp_path):
-    control = _FakeControl()
-    page = _FakePage({MARK_READ_SELECTOR: control})
-    with _client(page, tmp_path) as client:
-        assert client.mark_finished("b1") is True
-    assert control.clicked is True
-
-
-def test_mark_finished_returns_false_when_no_control(tmp_path):
-    page = _FakePage({})
+def test_mark_finished_returns_false_when_status_form_missing(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1") is False
 
 
-def test_mark_finished_sets_date_fields(tmp_path):
-    year, month, day, save = _FakeControl(), _FakeControl(), _FakeControl(), _FakeControl()
+def test_mark_finished_sets_date_fields_and_submits(tmp_path):
+    form = _FakeForm()
+    year, month, day, submit = _FakeSelect(), _FakeSelect(), _FakeSelect(), _FakeSubmit()
     page = _FakePage(
         {
-            READ_STATUS_SELECTOR: _FakeControl(),
-            EDIT_DATE_SELECTOR: _FakeControl(),
+            READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read"),
+            STATUS_READ_FORM_SELECTOR: form,
             DATE_YEAR_SELECTOR: year,
             DATE_MONTH_SELECTOR: month,
             DATE_DAY_SELECTOR: day,
-            SAVE_DATE_SELECTOR: save,
+            SUBMIT_INSTANCE_SELECTOR: submit,
         }
     )
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1", date(2023, 8, 18)) is True
     assert (year.value, month.value, day.value) == ("2023", "8", "18")
-    assert save.clicked is True
+    assert submit.clicked is True
+    assert any("/read_instances/new?book_id=b1" in u for u in page.goto_urls)
 
 
-def test_mark_finished_returns_false_when_date_editor_missing(tmp_path):
-    page = _FakePage({READ_STATUS_SELECTOR: _FakeControl()})
+def test_mark_finished_returns_false_when_date_field_missing(tmp_path):
+    form = _FakeForm()
+    page = _FakePage(
+        {READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read"), STATUS_READ_FORM_SELECTOR: form}
+    )
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1", date(2023, 8, 18)) is False
-
-
-def test_set_value_falls_back_to_fill_when_select_unsupported():
-    class _FillOnly:
-        def __init__(self):
-            self.filled = None
-
-        def select_option(self, value):
-            raise ValueError("not a select")
-
-        def fill(self, value):
-            self.filled = value
-
-    element = _FillOnly()
-    client_mod._set_value(element, "7")
-    assert element.filled == "7"

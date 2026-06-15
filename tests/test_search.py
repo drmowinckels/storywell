@@ -44,8 +44,13 @@ class _FakePage:
         self._records = records
         self.goto_urls = []
 
-    def goto(self, url):
+    def goto(self, url, **kwargs):
         self.goto_urls.append(url)
+
+    def wait_for_selector(self, selector, timeout=None):
+        if not self._records:
+            raise TimeoutError("no results")
+        return object()
 
     def query_selector_all(self, _selector):
         return [_FakeElement(r) for r in self._records]

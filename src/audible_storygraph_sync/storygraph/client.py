@@ -1,10 +1,14 @@
 """StoryGraph write client (mark as read + finish date).
 
-NOTE: every selector below is PROVISIONAL and must be verified against the live
-StoryGraph DOM with an authenticated session before any real run is trusted. The
-flow mirrors the old good_audible_story_sync tool (book page -> mark read ->
-read-date form), translated to Playwright. The pure ``date_fields`` helper and the
-control-presence logic are unit-tested; only the selector strings are speculative.
+Selectors/flow verified against the live StoryGraph DOM (2026-06-15):
+- a book page exposes ``.read-status-label`` (current status text) and a Rails form
+  ``form[action*='/update-status'][action*='status=read']`` to set status to read;
+- the finish date is added on ``/read_instances/new?book_id={id}`` via selects
+  ``new_read_instance[day|month|year]`` (numeric values) submitted to POST
+  ``/read_instances``.
+
+The pure ``date_fields`` helper is unit-tested; the browser flow is covered with a
+mocked page.
 """
 
 from __future__ import annotations
@@ -15,31 +19,21 @@ from pathlib import Path
 from ..config import storygraph_state_path
 from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright
 
-READ_STATUS_SELECTOR = ".read-status-label, [data-test-id='read-status']"
-MARK_READ_SELECTOR = (
-    "[data-test-id='mark-as-read'], button:has-text('Mark as read'), a:has-text('Mark as read')"
+READ_STATUS_LABEL_SELECTOR = ".read-status-label"
+STATUS_READ_FORM_SELECTOR = "form[action*='/update-status'][action*='status=read']"
+READ_INSTANCE_NEW_PATH = "/read_instances/new"
+DATE_DAY_SELECTOR = "select[name='new_read_instance[day]']"
+DATE_MONTH_SELECTOR = "select[name='new_read_instance[month]']"
+DATE_YEAR_SELECTOR = "select[name='new_read_instance[year]']"
+SUBMIT_INSTANCE_SELECTOR = (
+    "form[action$='/read_instances'] button[type='submit'], "
+    "form[action$='/read_instances'] input[type='submit']"
 )
-EDIT_DATE_SELECTOR = (
-    "[data-test-id='edit-read-date'], a:has-text('read date'), button:has-text('read date')"
-)
-DATE_DAY_SELECTOR = "select[name*='[day]'], input[name*='[day]']"
-DATE_MONTH_SELECTOR = "select[name*='[month]'], input[name*='[month]']"
-DATE_YEAR_SELECTOR = "select[name*='[year]'], input[name*='[year]']"
-SAVE_DATE_SELECTOR = (
-    "form[action*='/read_instances'] button[type='submit'], "
-    "form[action*='/read_instances'] input[type='submit']"
-)
+SETTLE_MS = 1200
 
 
 def date_fields(value: date) -> dict[str, str]:
     return {"day": str(value.day), "month": str(value.month), "year": str(value.year)}
-
-
-def _set_value(element, value: str) -> None:
-    try:
-        element.select_option(value)
-    except Exception:
-        element.fill(value)
 
 
 class StorygraphClient:
@@ -76,31 +70,35 @@ class StorygraphClient:
                 self._pw_cm.__exit__(*exc)
         return False
 
+    def current_status(self, book_id: str) -> str | None:
+        page = self._page
+        page.goto(f"{BASE_URL}/books/{book_id}", wait_until="domcontentloaded")
+        label = page.query_selector(READ_STATUS_LABEL_SELECTOR)
+        return label.inner_text().strip().lower() if label else None
+
     def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool:
-        self._page.goto(f"{BASE_URL}/books/{book_id}")
-        if not self._ensure_marked_read():
+        if self.current_status(book_id) == "read":
+            return True
+        if not self._set_status_read():
             return False
         if finish_date is None:
             return True
-        return self._set_finish_date(finish_date)
+        return self._add_finish_date(book_id, finish_date)
 
-    def _ensure_marked_read(self) -> bool:
-        page = self._page
-        if page.query_selector(READ_STATUS_SELECTOR) is not None:
-            return True
-        control = page.query_selector(MARK_READ_SELECTOR)
-        if control is None:
+    def _set_status_read(self) -> bool:
+        form = self._page.query_selector(STATUS_READ_FORM_SELECTOR)
+        if form is None:
             return False
-        control.click()
+        form.evaluate("f => f.requestSubmit()")
+        self._page.wait_for_timeout(SETTLE_MS)
         return True
 
-    def _set_finish_date(self, value: date) -> bool:
+    def _add_finish_date(self, book_id: str, value: date) -> bool:
         page = self._page
-        editor = page.query_selector(EDIT_DATE_SELECTOR)
-        if editor is None:
-            return False
-        editor.click()
-
+        page.goto(
+            f"{BASE_URL}{READ_INSTANCE_NEW_PATH}?book_id={book_id}",
+            wait_until="domcontentloaded",
+        )
         fields = date_fields(value)
         for selector, field_value in (
             (DATE_YEAR_SELECTOR, fields["year"]),
@@ -110,10 +108,11 @@ class StorygraphClient:
             element = page.query_selector(selector)
             if element is None:
                 return False
-            _set_value(element, field_value)
+            element.select_option(field_value)
 
-        save = page.query_selector(SAVE_DATE_SELECTOR)
-        if save is None:
+        submit = page.query_selector(SUBMIT_INSTANCE_SELECTOR)
+        if submit is None:
             return False
-        save.click()
+        submit.click()
+        page.wait_for_timeout(SETTLE_MS)
         return True
