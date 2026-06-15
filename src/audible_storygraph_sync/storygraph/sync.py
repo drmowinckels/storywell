@@ -6,7 +6,7 @@ from datetime import date
 from typing import Protocol
 
 from ..models import Audiobook
-from .matching import Candidate, MatchResult, MatchStatus, match_book
+from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
 from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
@@ -35,7 +35,7 @@ class SyncOutcome:
 
 def query_for(book: Audiobook) -> str:
     author = book.authors[0] if book.authors else ""
-    return f"{book.title} {author}".strip()
+    return f"{search_title(book.title)} {author}".strip()
 
 
 def plan_sync(books: Iterable[Audiobook], search_fn: SearchFn) -> list[SyncPlanItem]:

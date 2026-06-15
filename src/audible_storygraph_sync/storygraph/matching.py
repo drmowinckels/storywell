@@ -11,12 +11,33 @@ MIN_PLAUSIBLE = 0.60
 AMBIGUOUS_MARGIN = 0.08
 
 _TITLE_NOISE = re.compile(
-    r"\b(unabridged|a novel|dramatized adaptation|graphic audio|audio ?book)\b",
+    r"\b(unabridged|a novel|dramatized adaptation|graphic audio|audio ?book"
+    r"|omnibus|edition|collection)\b",
     re.IGNORECASE,
 )
 _TRANSLATOR = re.compile(r"\s*-\s*translator\b", re.IGNORECASE)
 _NON_ALNUM = re.compile(r"[^a-z0-9 ]+")
 _WS = re.compile(r"\s+")
+
+_FREE_PREFIX = re.compile(r"^\s*free(\s+story)?\s*:\s*", re.IGNORECASE)
+_PAREN = re.compile(r"\s*\([^)]*\)")
+_SERIES_SUBTITLE = re.compile(
+    r":\s*.*\b(trilogy|series|saga|collection|book\s+\d+|volume\s+\d+)\b.*$",
+    re.IGNORECASE,
+)
+_SERIES_TAIL = re.compile(r",\s*(book|volume|season|part)\b.*$", re.IGNORECASE)
+_EDITION_WORDS = re.compile(r"\b(omnibus\s+edition|omnibus|definitive collection)\b", re.IGNORECASE)
+
+
+def search_title(title: str) -> str:
+    """A search-friendly title: drop FREE/series/omnibus noise that StoryGraph search
+    doesn't index, so books like 'X: Some Trilogy, Book 2' or 'FREE STORY: Y' are found."""
+    text = _FREE_PREFIX.sub("", title)
+    text = _PAREN.sub("", text)
+    text = _SERIES_SUBTITLE.sub("", text)
+    text = _SERIES_TAIL.sub("", text)
+    text = _EDITION_WORDS.sub("", text)
+    return _WS.sub(" ", text).strip() or title
 
 
 class MatchStatus(StrEnum):
@@ -52,7 +73,8 @@ def _strip_diacritics(text: str) -> str:
 
 
 def normalize_title(title: str) -> str:
-    text = _strip_diacritics(title).lower()
+    text = _FREE_PREFIX.sub("", title)  # strip FREE:/FREE STORY: before the subtitle cut
+    text = _strip_diacritics(text).lower()
     text = re.sub(r"[:(].*$", " ", text)  # drop subtitle / parenthetical tail
     text = _TITLE_NOISE.sub(" ", text)
     text = _NON_ALNUM.sub(" ", text)

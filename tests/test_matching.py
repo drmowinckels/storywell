@@ -4,6 +4,7 @@ from audible_storygraph_sync.storygraph.matching import (
     match_book,
     normalize_author,
     normalize_title,
+    search_title,
 )
 
 
@@ -11,6 +12,31 @@ def test_normalize_title_drops_subtitle_and_noise():
     assert normalize_title("American Gods: The Tenth Anniversary Edition") == "american gods"
     assert normalize_title("The Two Towers (Unabridged)") == "the two towers"
     assert normalize_title("Howl’s Moving Castle") == "howl s moving castle"
+
+
+def test_search_title_strips_series_omnibus_and_free_noise():
+    assert search_title("The Amber Spyglass: His Dark Materials Trilogy, Book 3") == (
+        "The Amber Spyglass"
+    )
+    assert search_title("The Hunger Games: Hunger Games Trilogy, Book 1") == "The Hunger Games"
+    assert search_title("Wool Omnibus Edition (Wool 1 - 5)") == "Wool"
+    assert search_title("FREE STORY: The Relic Guild") == "The Relic Guild"
+    assert search_title("FREE: Professional Integrity (A Riyria Chronicles Tale)") == (
+        "Professional Integrity"
+    )
+    assert search_title("The Jester (A Riyria Chronicles Tale)") == "The Jester"
+
+
+def test_search_title_keeps_plain_titles():
+    assert search_title("Hyperion") == "Hyperion"
+    assert search_title("American Gods: The Tenth Anniversary Edition").startswith("American Gods")
+
+
+def test_normalize_title_handles_free_prefix_and_omnibus():
+    assert normalize_title("FREE: Professional Integrity (A Riyria Tale)") == (
+        "professional integrity"
+    )
+    assert normalize_title("Wool Omnibus Edition (Wool 1 - 5)") == "wool"
 
 
 def test_normalize_author_strips_translator_and_diacritics():
