@@ -48,6 +48,9 @@ class _FakeClient:
     def mark_finished(self, book_id, finish_date=None):
         return True
 
+    def write_review(self, book_id, *, stars_integer="", stars_decimal="", explanation=""):
+        return "written"
+
 
 def _one_book(*a, **k):
     return [

@@ -210,9 +210,12 @@ def sync(
     limit: int = typer.Option(
         0, "--limit", min=0, help="Process at most N finished books (0 = all)."
     ),
+    ratings: bool = typer.Option(
+        True, "--ratings/--no-ratings", help="Also sync your rating + review (with narrator note)."
+    ),
     headless: bool = typer.Option(True, "--headless/--headed"),
 ) -> None:
-    """Mark a source's finished books as read on StoryGraph.
+    """Mark a source's finished books as read on StoryGraph (and sync ratings/reviews).
 
     Writes high-confidence matches directly and prompts on ambiguous ones.
     Use --dry-run to preview the match plan without writing anything.
@@ -225,6 +228,7 @@ def sync(
         SyncStore,
         is_authenticated,
         plan_sync,
+        run_review_sync,
         run_sync,
         summarize,
     )
@@ -277,16 +281,25 @@ def sync(
                 store=store,
                 confirm_fn=_prompt_ambiguous,
             )
+            review_outcome = run_review_sync(books, rater=client, store=store) if ratings else None
     store.save()
 
     console.print(
-        f"written: {len(outcome.written)}  "
+        f"read — written: {len(outcome.written)}  "
         f"skipped (already synced): {len(outcome.skipped_synced)}  "
         f"ambiguous skipped: {len(outcome.ambiguous_skipped)}  "
         f"no match: {len(outcome.no_match)}  "
         f"failed: {len(outcome.failed)}",
         style="cyan",
     )
+    if review_outcome is not None:
+        console.print(
+            f"ratings/reviews — written: {len(review_outcome.written)}  "
+            f"skipped: {len(review_outcome.skipped_synced)}  "
+            f"no match: {len(review_outcome.no_match)}  "
+            f"failed: {len(review_outcome.failed)}",
+            style="cyan",
+        )
     if outcome.failed:
         console.print(
             f"{len(outcome.failed)} book(s) failed to write; re-run to retry.", style="red"

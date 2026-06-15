@@ -61,3 +61,18 @@ def test_load_tolerates_corrupt_json(tmp_path):
     store = SyncStore.load(path)
     assert store.mappings == {}
     assert store.synced == {}
+
+
+def test_record_rated_and_is_rated(tmp_path):
+    store = SyncStore.load(tmp_path / "s.json")
+    assert store.is_rated("audible:A1") is False
+    store.record_rated("audible:A1")
+    assert store.is_rated("audible:A1") is True
+
+
+def test_rated_persists_across_reload(tmp_path):
+    path = tmp_path / "s.json"
+    store = SyncStore.load(path)
+    store.record_rated("audible:A1")
+    store.save()
+    assert SyncStore.load(path).is_rated("audible:A1") is True

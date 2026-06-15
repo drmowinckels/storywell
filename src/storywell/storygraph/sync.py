@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from ..models import SourceBook
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
+from .reviews import compose_review, rating_to_stars
 from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
@@ -15,6 +16,12 @@ ConfirmFn = Callable[[Any, MatchResult], "Candidate | None"]
 
 class Writer(Protocol):
     def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool: ...
+
+
+class Rater(Protocol):
+    def write_review(
+        self, book_id: str, *, stars_integer: str, stars_decimal: str, explanation: str
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -161,5 +168,57 @@ def run_title_sync(
             outcome.written.append(entry.key)
         else:
             outcome.failed.append(entry.key)
+
+    return outcome
+
+
+def run_review_sync(
+    books: Iterable[SourceBook],
+    *,
+    rater: Rater,
+    store: SyncStore,
+    narrator_note: bool = True,
+    dry_run: bool = False,
+) -> SyncOutcome:
+    """Write each book's rating + review (with a narrator note) to its matched
+    StoryGraph book. Requires the book to already be matched (mark-read pass populates
+    the store mapping). Idempotent via the store's ``rated`` set; an existing StoryGraph
+    review is left untouched (the writer reports 'skipped')."""
+    outcome = SyncOutcome()
+    for book in books:
+        if store.is_rated(book.key):
+            outcome.skipped_synced.append(book.key)
+            continue
+        book_id = store.cached_book_id(book.key)
+        if book_id is None:
+            outcome.no_match.append(book.key)
+            continue
+
+        stars_integer, stars_decimal = ("", "")
+        if book.rating:
+            stars_integer, stars_decimal = rating_to_stars(book.rating)
+        narrators = book.narrators if narrator_note else ()
+        explanation = compose_review(book.review, narrators) or ""
+        if not stars_integer and not explanation:
+            continue
+
+        if dry_run:
+            outcome.planned.append(book.key)
+            continue
+
+        status = rater.write_review(
+            book_id,
+            stars_integer=stars_integer,
+            stars_decimal=stars_decimal,
+            explanation=explanation,
+        )
+        if status == "written":
+            store.record_rated(book.key)
+            outcome.written.append(book.key)
+        elif status == "skipped":
+            store.record_rated(book.key)
+            outcome.skipped_synced.append(book.key)
+        else:
+            outcome.failed.append(book.key)
 
     return outcome

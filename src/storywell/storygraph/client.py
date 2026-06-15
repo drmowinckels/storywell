@@ -29,6 +29,13 @@ SUBMIT_INSTANCE_SELECTOR = (
     "form[action$='/read_instances'] button[type='submit'], "
     "form[action$='/read_instances'] input[type='submit']"
 )
+REVIEW_NEW_PATH = "/reviews/new"
+STARS_INTEGER_SELECTOR = "select[name='stars_integer']"
+STARS_DECIMAL_SELECTOR = "select[name='stars_decimal']"
+EXPLANATION_SELECTOR = "input[name='review[explanation]']"
+REVIEW_SUBMIT_SELECTOR = (
+    "form[action='/reviews'] button[type='submit'], form[action='/reviews'] input[type='submit']"
+)
 SETTLE_MS = 1200
 
 
@@ -124,3 +131,35 @@ class StorygraphClient:
         submit.click()
         page.wait_for_timeout(SETTLE_MS)
         return True
+
+    def write_review(
+        self,
+        book_id: str,
+        *,
+        stars_integer: str = "",
+        stars_decimal: str = "",
+        explanation: str = "",
+    ) -> str:
+        """Create a rating/review on StoryGraph. Returns 'written', 'skipped' (a review
+        already exists, so /reviews/new redirects away and the form is absent), or
+        'failed'. ``review[explanation]`` is a hidden Trix input set directly."""
+        page = self._page
+        page.goto(f"{BASE_URL}{REVIEW_NEW_PATH}?book_id={book_id}", wait_until="domcontentloaded")
+        stars = page.query_selector(STARS_INTEGER_SELECTOR)
+        if stars is None:
+            return "skipped"
+        if stars_integer:
+            stars.select_option(stars_integer)
+            decimal = page.query_selector(STARS_DECIMAL_SELECTOR)
+            if decimal is not None:
+                decimal.select_option(stars_decimal or "")
+        if explanation:
+            field = page.query_selector(EXPLANATION_SELECTOR)
+            if field is not None:
+                field.evaluate("(node, value) => { node.value = value; }", explanation)
+        submit = page.query_selector(REVIEW_SUBMIT_SELECTOR)
+        if submit is None:
+            return "failed"
+        submit.click()
+        page.wait_for_timeout(SETTLE_MS)
+        return "written"
