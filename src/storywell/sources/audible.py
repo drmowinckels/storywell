@@ -1,5 +1,14 @@
+"""Audible source: reads the listener's library and reports finished audiobooks.
+
+The pure parsing/filtering helpers are unit-tested; ``AudibleSource`` wires them to
+the live ``audible`` client. Audible has no public API and no ISBNs, so downstream
+matching against StoryGraph is title/author based (see ``storywell.storygraph``).
+"""
+
 from __future__ import annotations
 
+import html
+import re
 import tomllib
 from collections.abc import Iterable
 from datetime import datetime
@@ -10,10 +19,14 @@ import audible
 import audible.exceptions
 import httpx
 
-from .models import Audiobook
+from ..models import SourceBook
+from .base import SourceError
+
+SOURCE_NAME = "audible"
 
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc,product_attrs,contributors,is_finished,percent_complete,relationships"
+    ",provided_review,reviews,review_attrs"
 )
 DEFAULT_AUTH_DIR = Path.home() / ".audible"
 DEFAULT_CONFIG_FILENAME = "config.toml"
@@ -21,11 +34,11 @@ PAGE_SIZE = 1000
 MAX_PAGES = 50
 
 
-class AuthFileNotFound(RuntimeError):
+class AuthFileNotFound(SourceError):
     pass
 
 
-class LibraryFetchError(RuntimeError):
+class LibraryFetchError(SourceError):
     pass
 
 
@@ -116,23 +129,80 @@ def parse_is_finished(item: dict[str, Any]) -> bool:
     return bool(status.get("is_finished") or item.get("is_finished"))
 
 
-def item_to_audiobook(item: dict[str, Any]) -> Audiobook:
-    return Audiobook(
-        asin=item["asin"],
+_COLLECTION_KEYWORDS = re.compile(
+    r"\b(collection|omnibus|anthology|quartet|complete novels|complete works"
+    r"|complete saga|the complete \w+|definitive)\b",
+    re.IGNORECASE,
+)
+_SINGLE_VOLUME = re.compile(r",\s*book\s*\d+\b|\btrilogy,\s*book\s*\d+", re.IGNORECASE)
+
+
+def is_collection(item: dict[str, Any]) -> bool:
+    """True for a multi-book collection/omnibus, false for ordinary (multi-part) books.
+
+    Audible flags collections only loosely (most audiobooks are MultiPartBook and it
+    never names the contained works), so detection is by title keyword.
+    """
+    title = item.get("title", "") or ""
+    if item.get("content_delivery_type") != "MultiPartBook":
+        return False
+    if _SINGLE_VOLUME.search(title):
+        return False
+    return bool(_COLLECTION_KEYWORDS.search(title))
+
+
+def _provided_review(item: dict[str, Any]) -> dict[str, Any]:
+    review = item.get("provided_review")
+    return review if isinstance(review, dict) else {}
+
+
+def parse_rating(item: dict[str, Any]) -> float | None:
+    """The listener's own overall rating (1-5), if they rated the book."""
+    raw = (_provided_review(item).get("ratings") or {}).get("overall_rating")
+    try:
+        return float(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+
+
+_HTML_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HTML_TAG = re.compile(r"<[^>]+>")
+_BLANK_LINES = re.compile(r"\n{3,}")
+
+
+def parse_review(item: dict[str, Any]) -> str | None:
+    """The listener's own written review as plain text (Audible bodies contain HTML)."""
+    body = _provided_review(item).get("body")
+    if not isinstance(body, str) or not body.strip():
+        return None
+    text = _HTML_BR.sub("\n", body)
+    text = _HTML_TAG.sub("", text)
+    text = html.unescape(text)
+    text = _BLANK_LINES.sub("\n\n", text).strip()
+    return text or None
+
+
+def item_to_book(item: dict[str, Any]) -> SourceBook:
+    return SourceBook(
+        source=SOURCE_NAME,
+        source_id=item["asin"],
         title=item.get("title", "").strip(),
         authors=parse_authors(item),
         narrators=parse_narrators(item),
         percent_complete=parse_percent_complete(item),
         finished_at=parse_finished_at(item),
         is_finished=parse_is_finished(item),
+        is_collection=is_collection(item),
+        rating=parse_rating(item),
+        review=parse_review(item),
     )
 
 
-def filter_finished(items: Iterable[dict[str, Any]], threshold: float = 0.95) -> list[Audiobook]:
+def filter_finished(items: Iterable[dict[str, Any]], threshold: float = 0.95) -> list[SourceBook]:
     cutoff = threshold * 100.0
-    finished: list[Audiobook] = []
+    finished: list[SourceBook] = []
     for raw in items:
-        book = item_to_audiobook(raw)
+        book = item_to_book(raw)
         if book.is_finished or book.percent_complete >= cutoff:
             finished.append(book)
     return finished
@@ -178,11 +248,16 @@ def fetch_library_items(auth_file: Path) -> list[dict[str, Any]]:
         raise LibraryFetchError(f"Network error talking to Audible: {err}") from err
 
 
-def finished_audiobooks(
-    threshold: float = 0.95,
-    auth_file: Path | None = None,
-    profile: str | None = None,
-) -> list[Audiobook]:
-    resolved = locate_auth_file(auth_file, profile=profile)
-    items = fetch_library_items(resolved)
-    return filter_finished(items, threshold=threshold)
+class AudibleSource:
+    """Reports finished audiobooks from an Audible library via ``audible-cli`` auth."""
+
+    name = SOURCE_NAME
+
+    def __init__(self, *, auth_file: Path | None = None, profile: str | None = None):
+        self.auth_file = auth_file
+        self.profile = profile
+
+    def finished_books(self, *, threshold: float = 0.95) -> list[SourceBook]:
+        resolved = locate_auth_file(self.auth_file, profile=self.profile)
+        items = fetch_library_items(resolved)
+        return filter_finished(items, threshold=threshold)
