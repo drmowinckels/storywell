@@ -10,10 +10,12 @@ from storywell.storygraph.matching import (
 from storywell.storygraph.store import SyncStore
 from storywell.storygraph.sync import (
     SyncPlanItem,
+    TitleEntry,
     plan_sync,
     query_for,
     resolve_match,
     run_sync,
+    run_title_sync,
     summarize,
 )
 
@@ -219,3 +221,35 @@ def test_run_sync_records_failure(tmp_path):
     )
     assert outcome.failed == ["audible:A1"]
     assert outcome.written == []
+
+
+def test_run_title_sync_writes_each_title(tmp_path):
+    entries = [TitleEntry(key="audible:c::emma", title="Emma", finish_date=date(2020, 1, 1))]
+    writer = _FakeWriter()
+    outcome = run_title_sync(
+        entries,
+        search_fn=lambda q: [Candidate("b1", "Emma", "")],
+        writer=writer,
+        store=_store(tmp_path),
+    )
+    assert outcome.written == ["audible:c::emma"]
+    assert writer.calls == [("b1", date(2020, 1, 1))]
+
+
+def test_run_title_sync_skips_already_synced(tmp_path):
+    store = _store(tmp_path)
+    store.record("audible:c::emma", "b1", date(2020, 1, 1))
+    entries = [TitleEntry(key="audible:c::emma", title="Emma", finish_date=date(2020, 1, 1))]
+    outcome = run_title_sync(entries, search_fn=lambda q: [], writer=_FakeWriter(), store=store)
+    assert outcome.skipped_synced == ["audible:c::emma"]
+
+
+def test_run_title_sync_no_match(tmp_path):
+    entries = [TitleEntry(key="audible:c::zzz", title="Zzz Unknown Book")]
+    outcome = run_title_sync(
+        entries,
+        search_fn=lambda q: [Candidate("b", "Totally Different Title", "")],
+        writer=_FakeWriter(),
+        store=_store(tmp_path),
+    )
+    assert outcome.no_match == ["audible:c::zzz"]

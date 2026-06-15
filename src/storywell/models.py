@@ -21,6 +21,7 @@ class SourceBook:
     percent_complete: float = 0.0
     finished_at: datetime | None = None
     is_finished: bool = False
+    is_collection: bool = False
 
     @property
     def key(self) -> str:

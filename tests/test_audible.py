@@ -11,12 +11,36 @@ from storywell.sources.audible import (
     LibraryFetchError,
     fetch_library_items,
     filter_finished,
+    is_collection,
     item_to_book,
     locate_auth_file,
     parse_finished_at,
     parse_is_finished,
     parse_percent_complete,
 )
+
+
+def _coll_item(title, content_delivery_type="MultiPartBook"):
+    return {"asin": "C", "title": title, "content_delivery_type": content_delivery_type}
+
+
+def test_is_collection_true_for_collection_titles():
+    assert is_collection(_coll_item("The Complete Jane Austen Collection"))
+    assert is_collection(_coll_item("Wool Omnibus Edition (Wool 1 - 5)"))
+    assert is_collection(_coll_item("Sherlock Holmes: The Definitive Collection"))
+
+
+def test_is_collection_false_for_ordinary_and_single_volumes():
+    assert not is_collection(_coll_item("Jade City"))
+    assert not is_collection(_coll_item("Catching Fire: Hunger Games Trilogy, Book 2"))
+    assert not is_collection(
+        _coll_item("The Monster Collection", content_delivery_type="SinglePartBook")
+    )
+
+
+def test_item_to_book_sets_is_collection():
+    assert item_to_book(_coll_item("The Complete Jane Austen Collection")).is_collection is True
+    assert item_to_book({"asin": "A", "title": "Jade City"}).is_collection is False
 
 
 def make_item(

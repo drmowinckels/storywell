@@ -3,14 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..models import SourceBook
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
 from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
-ConfirmFn = Callable[[SourceBook, MatchResult], "Candidate | None"]
+ConfirmFn = Callable[[Any, MatchResult], "Candidate | None"]
 
 
 class Writer(Protocol):
@@ -59,13 +59,11 @@ def _finish_date(book: SourceBook) -> date | None:
     return book.finished_at.date() if book.finished_at else None
 
 
-def resolve_match(
-    book: SourceBook, result: MatchResult, confirm_fn: ConfirmFn | None
-) -> Candidate | None:
+def resolve_match(item: Any, result: MatchResult, confirm_fn: ConfirmFn | None) -> Candidate | None:
     if result.status is MatchStatus.MATCH and result.best is not None:
         return result.best.candidate
     if result.status is MatchStatus.AMBIGUOUS and confirm_fn is not None:
-        return confirm_fn(book, result)
+        return confirm_fn(item, result)
     return None
 
 
@@ -108,5 +106,60 @@ def run_sync(
             outcome.written.append(book.key)
         else:
             outcome.failed.append(book.key)
+
+    return outcome
+
+
+@dataclass(frozen=True)
+class TitleEntry:
+    key: str
+    title: str
+    finish_date: date | None = None
+    author: str = ""
+
+
+def run_title_sync(
+    entries: Iterable[TitleEntry],
+    *,
+    search_fn: SearchFn,
+    writer: Writer,
+    store: SyncStore,
+    confirm_fn: ConfirmFn | None = None,
+    dry_run: bool = False,
+) -> SyncOutcome:
+    """Mark a list of plain titles read (used for a collection's contained books).
+
+    Mirrors run_sync but keys on a caller-supplied ``key`` (contained books have no
+    source id of their own) and searches by the title string.
+    """
+    outcome = SyncOutcome()
+    for entry in entries:
+        if store.is_synced(entry.key, entry.finish_date):
+            outcome.skipped_synced.append(entry.key)
+            continue
+
+        book_id = store.cached_book_id(entry.key)
+        if book_id is None:
+            query = f"{search_title(entry.title)} {entry.author}".strip()
+            result = match_book(entry.title, entry.author, search_fn(query))
+            chosen = resolve_match(entry, result, confirm_fn)
+            if chosen is None:
+                if result.status is MatchStatus.NO_MATCH:
+                    outcome.no_match.append(entry.key)
+                else:
+                    outcome.ambiguous_skipped.append(entry.key)
+                continue
+            book_id = chosen.book_id
+            store.remember_match(entry.key, book_id)
+
+        if dry_run:
+            outcome.planned.append(entry.key)
+            continue
+
+        if writer.mark_finished(book_id, entry.finish_date):
+            store.record(entry.key, book_id, entry.finish_date)
+            outcome.written.append(entry.key)
+        else:
+            outcome.failed.append(entry.key)
 
     return outcome

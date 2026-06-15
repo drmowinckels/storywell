@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from typer.testing import CliRunner
 
 from storywell.cli import _choose_candidate, app
@@ -164,3 +166,63 @@ def test_cli_sync_dry_run_reports_matches(monkeypatch):
     result = runner.invoke(app, ["sync", "--dry-run"])
     assert result.exit_code == 0
     assert "match:" in result.stdout.lower()
+
+
+class _FakeCollSearcher:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def search(self, query):
+        if "jane austen" in query.lower():
+            return [Candidate("o1", "Jane Austen: The Complete Collection", "Jane Austen")]
+        return [Candidate("k-" + query[:6], query, "")]
+
+    def fetch_description(self, book_id):
+        return "Included are the following: Emma, Persuasion."
+
+
+def _one_collection(*a, **k):
+    return [
+        SourceBook(
+            source="audible",
+            source_id="C1",
+            title="The Complete Jane Austen Collection",
+            is_collection=True,
+            finished_at=datetime(2020, 1, 1, tzinfo=UTC),
+        )
+    ]
+
+
+def test_cli_collections_none_found(monkeypatch):
+    monkeypatch.setattr("storywell.cli._load_finished", _one_book)
+    result = runner.invoke(app, ["collections"])
+    assert result.exit_code == 0
+    assert "No finished collections" in result.stdout
+
+
+def test_cli_collections_dry_run_lists_titles(monkeypatch):
+    monkeypatch.setattr("storywell.cli._load_finished", _one_collection)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeCollSearcher)
+    result = runner.invoke(app, ["collections"])
+    assert result.exit_code == 0
+    assert "Emma" in result.stdout
+    assert "Persuasion" in result.stdout
+
+
+def test_cli_collections_no_dry_run_marks_selected(monkeypatch, tmp_path):
+    monkeypatch.setattr("storywell.cli._load_finished", _one_collection)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
+    monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeCollSearcher)
+    monkeypatch.setattr("storywell.storygraph.client.StorygraphClient", _FakeClient)
+    monkeypatch.setattr("storywell.config.sync_store_path", lambda: tmp_path / "store.json")
+    result = runner.invoke(app, ["collections", "--no-dry-run"], input="1\n\n")
+    assert result.exit_code == 0
+    assert "written: 1" in result.stdout

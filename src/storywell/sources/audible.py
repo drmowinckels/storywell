@@ -7,6 +7,7 @@ matching against StoryGraph is title/author based (see ``storywell.storygraph``)
 
 from __future__ import annotations
 
+import re
 import tomllib
 from collections.abc import Iterable
 from datetime import datetime
@@ -126,6 +127,28 @@ def parse_is_finished(item: dict[str, Any]) -> bool:
     return bool(status.get("is_finished") or item.get("is_finished"))
 
 
+_COLLECTION_KEYWORDS = re.compile(
+    r"\b(collection|omnibus|anthology|quartet|complete novels|complete works"
+    r"|complete saga|the complete \w+|definitive)\b",
+    re.IGNORECASE,
+)
+_SINGLE_VOLUME = re.compile(r",\s*book\s*\d+\b|\btrilogy,\s*book\s*\d+", re.IGNORECASE)
+
+
+def is_collection(item: dict[str, Any]) -> bool:
+    """True for a multi-book collection/omnibus, false for ordinary (multi-part) books.
+
+    Audible flags collections only loosely (most audiobooks are MultiPartBook and it
+    never names the contained works), so detection is by title keyword.
+    """
+    title = item.get("title", "") or ""
+    if item.get("content_delivery_type") != "MultiPartBook":
+        return False
+    if _SINGLE_VOLUME.search(title):
+        return False
+    return bool(_COLLECTION_KEYWORDS.search(title))
+
+
 def item_to_book(item: dict[str, Any]) -> SourceBook:
     return SourceBook(
         source=SOURCE_NAME,
@@ -136,6 +159,7 @@ def item_to_book(item: dict[str, Any]) -> SourceBook:
         percent_complete=parse_percent_complete(item),
         finished_at=parse_finished_at(item),
         is_finished=parse_is_finished(item),
+        is_collection=is_collection(item),
     )
 
 

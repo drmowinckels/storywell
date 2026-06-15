@@ -10,10 +10,12 @@ from .store import SyncStore
 from .sync import (
     SyncOutcome,
     SyncPlanItem,
+    TitleEntry,
     plan_sync,
     query_for,
     resolve_match,
     run_sync,
+    run_title_sync,
     summarize,
 )
 
@@ -27,6 +29,7 @@ __all__ = [
     "SyncOutcome",
     "SyncPlanItem",
     "SyncStore",
+    "TitleEntry",
     "is_authenticated",
     "login",
     "match_book",
@@ -34,5 +37,6 @@ __all__ = [
     "query_for",
     "resolve_match",
     "run_sync",
+    "run_title_sync",
     "summarize",
 ]
