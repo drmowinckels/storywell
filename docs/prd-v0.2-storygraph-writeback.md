@@ -122,20 +122,23 @@ A small JSON store in the config dir:
 - _ToS:_ automating a site with no API is a grey area. Mitigate: human login, human-paced,
   personal use, no bulk scraping of others' data. (Flag for AM's call.)
 
-**Open questions (for AM in the morning)**
+**Resolved decisions (AM, 2026-06-15)**
 
-1. **Edition policy:** when StoryGraph has separate audiobook vs print editions, mark the
-   _audiobook_ edition, or whichever is already on your shelf, or first match? _(Default
-   I'll assume: prefer audiobook edition, else best title/author match.)_
-2. **Confirmation UX:** for ambiguous matches, interactive prompt during `sync`, or
-   batch them to a review file you resolve later? _(Default: report in `--dry-run`,
-   interactive confirm in `sync`, `--yes` to auto-accept high-confidence only.)_
-3. **The 0%-but-finished batch** (your 2023-08-18 bulk-mark, ~71 books): push these too,
-   or only push books actually listened ≥ threshold? _(Default: push all v0.1-finished,
-   since that's your real finished shelf.)_
-4. **Where to store session/state:** `~/.config/audible-storygraph-sync/` ok? _(Default: yes.)_
-5. **Playwright as a hard dep** vs optional `[storygraph]` extra (it's a heavy dep +
-   `playwright install chromium`)? _(Default: optional extra, with a clear error if missing.)_
+1. **Edition policy:** Best match, _any_ format — do not special-case audiobook vs print
+   editions; mark the top-scoring match.
+2. **Confirmation UX:** Interactive confirm — `sync` prompts per AMBIGUOUS book to
+   confirm / pick / skip. `sync` is interactive by default.
+3. **The 0%-but-finished batch** (2023-08-18 bulk-mark, ~71 books): Push all v0.1-finished
+   books, including these, with their finish dates.
+4. **Session/state location:** `~/.config/audible-storygraph-sync/` (XDG-aware). Implemented.
+5. **Playwright packaging:** Optional `[storygraph]` extra with a clear "install" error.
+   Implemented.
+
+**Write mode:** Write high-confidence (MATCH) directly — `sync` writes by default;
+`--dry-run` previews. (Chosen over dry-run-by-default.)
+
+**Still gating slice 3:** a live `storygraph-login` to verify the real search +
+mark-as-read DOM/forms before any writes are trusted.
 
 ## 6. First slice (stacked PR #1) — auth + session, no writes
 
