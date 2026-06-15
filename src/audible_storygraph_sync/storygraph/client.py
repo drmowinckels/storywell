@@ -42,18 +42,23 @@ class StorygraphClient:
     def __init__(
         self,
         *,
+        page=None,
         state_path: Path | None = None,
         playwright_factory: PlaywrightFactory | None = None,
         headless: bool = True,
     ):
+        self._external_page = page
         self._state_path = state_path or storygraph_state_path()
         self._factory = playwright_factory or _load_sync_playwright()
         self._headless = headless
         self._pw_cm = None
         self._browser = None
-        self._page = None
+        self._page = page
 
     def __enter__(self) -> StorygraphClient:
+        if self._external_page is not None:
+            self._page = self._external_page
+            return self
         self._pw_cm = self._factory()
         pw = self._pw_cm.__enter__()
         self._browser = pw.chromium.launch(headless=self._headless)
@@ -62,6 +67,8 @@ class StorygraphClient:
         return self
 
     def __exit__(self, *exc) -> bool:
+        if self._external_page is not None:
+            return False
         try:
             if self._browser is not None:
                 self._browser.close()
@@ -79,11 +86,12 @@ class StorygraphClient:
     def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool:
         if self.current_status(book_id) == "read":
             return True
-        if not self._set_status_read():
-            return False
-        if finish_date is None:
-            return True
-        return self._add_finish_date(book_id, finish_date)
+        # A dated read instance both records the read and sets status to "read",
+        # so when we have a date we add only that (one instance, correct date).
+        # Setting status separately would auto-create a second instance dated today.
+        if finish_date is not None:
+            return self._add_dated_read(book_id, finish_date)
+        return self._set_status_read()
 
     def _set_status_read(self) -> bool:
         form = self._page.query_selector(STATUS_READ_FORM_SELECTOR)
@@ -93,7 +101,7 @@ class StorygraphClient:
         self._page.wait_for_timeout(SETTLE_MS)
         return True
 
-    def _add_finish_date(self, book_id: str, value: date) -> bool:
+    def _add_dated_read(self, book_id: str, value: date) -> bool:
         page = self._page
         page.goto(
             f"{BASE_URL}{READ_INSTANCE_NEW_PATH}?book_id={book_id}",

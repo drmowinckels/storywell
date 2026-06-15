@@ -1,6 +1,7 @@
 from .matching import Candidate, MatchResult, MatchStatus, match_book
 from .session import (
     StorygraphAuthError,
+    StorygraphBrowser,
     StorygraphDependencyError,
     is_authenticated,
     login,
@@ -21,6 +22,7 @@ __all__ = [
     "MatchResult",
     "MatchStatus",
     "StorygraphAuthError",
+    "StorygraphBrowser",
     "StorygraphDependencyError",
     "SyncOutcome",
     "SyncPlanItem",

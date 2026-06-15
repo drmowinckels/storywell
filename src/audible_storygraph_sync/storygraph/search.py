@@ -72,20 +72,25 @@ class StorygraphSearcher:
     def __init__(
         self,
         *,
+        page=None,
         state_path: Path | None = None,
         playwright_factory: PlaywrightFactory | None = None,
         headless: bool = True,
         max_results: int = 10,
     ):
+        self._external_page = page
         self._state_path = state_path or storygraph_state_path()
         self._factory = playwright_factory or _load_sync_playwright()
         self._headless = headless
         self._max_results = max_results
         self._pw_cm = None
         self._browser = None
-        self._page = None
+        self._page = page
 
     def __enter__(self) -> StorygraphSearcher:
+        if self._external_page is not None:
+            self._page = self._external_page
+            return self
         self._pw_cm = self._factory()
         pw = self._pw_cm.__enter__()
         self._browser = pw.chromium.launch(headless=self._headless)
@@ -94,6 +99,8 @@ class StorygraphSearcher:
         return self
 
     def __exit__(self, *exc) -> bool:
+        if self._external_page is not None:
+            return False
         try:
             if self._browser is not None:
                 self._browser.close()

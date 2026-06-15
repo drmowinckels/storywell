@@ -8,6 +8,7 @@ from audible_storygraph_sync.storygraph import session
 from audible_storygraph_sync.storygraph.session import (
     SIGN_IN_URL,
     StorygraphAuthError,
+    StorygraphBrowser,
     StorygraphDependencyError,
     _is_signed_in,
     is_authenticated,
@@ -167,6 +168,16 @@ def test_is_authenticated_loads_storage_state_into_context(tmp_path):
     factory = _FakeFactory(_FakePage())
     is_authenticated(state, playwright_factory=factory)
     assert factory.browser.contexts[0].storage_state_in == str(state)
+
+
+def test_storygraph_browser_opens_page_and_closes(tmp_path):
+    state = tmp_path / "state.json"
+    state.write_text("{}")
+    page = _FakePage()
+    factory = _FakeFactory(page)
+    with StorygraphBrowser(state_path=state, playwright_factory=factory) as browser:
+        assert browser.page is page
+    assert factory.browser.closed is True
 
 
 def test_load_sync_playwright_returns_callable():

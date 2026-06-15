@@ -167,6 +167,7 @@ def sync(
     from .config import sync_store_path
     from .storygraph import (
         MatchStatus,
+        StorygraphBrowser,
         StorygraphDependencyError,
         SyncStore,
         is_authenticated,
@@ -212,17 +213,17 @@ def sync(
         return
 
     store = SyncStore.load(sync_store_path())
-    with (
-        StorygraphSearcher(headless=headless) as searcher,
-        StorygraphClient(headless=headless) as client,
-    ):
-        outcome = run_sync(
-            books,
-            search_fn=searcher.search,
-            writer=client,
-            store=store,
-            confirm_fn=_prompt_ambiguous,
-        )
+    with StorygraphBrowser(headless=headless) as browser:
+        searcher = StorygraphSearcher(page=browser.page)
+        client = StorygraphClient(page=browser.page)
+        with searcher, client:
+            outcome = run_sync(
+                books,
+                search_fn=searcher.search,
+                writer=client,
+                store=store,
+                confirm_fn=_prompt_ambiguous,
+            )
     store.save()
 
     console.print(

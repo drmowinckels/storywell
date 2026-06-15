@@ -167,3 +167,10 @@ def test_mark_finished_returns_false_when_date_field_missing(tmp_path):
     )
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1", date(2023, 8, 18)) is False
+
+
+def test_client_with_external_page_is_noop_on_already_read():
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    with StorygraphClient(page=page) as client:
+        assert client.mark_finished("b1") is True
+    assert page.goto_urls == ["https://app.thestorygraph.com/books/b1"]

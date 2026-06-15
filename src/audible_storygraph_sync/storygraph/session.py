@@ -118,3 +118,42 @@ def is_authenticated(
             return _is_signed_in(page.url)
         finally:
             browser.close()
+
+
+class StorygraphBrowser:
+    """One authenticated Playwright page shared by search and write operations.
+
+    Playwright's sync API forbids two concurrent ``sync_playwright()`` contexts, so
+    search and marking must share a single browser/page rather than each owning one.
+    """
+
+    def __init__(
+        self,
+        *,
+        state_path: Path | None = None,
+        playwright_factory: PlaywrightFactory | None = None,
+        headless: bool = True,
+    ):
+        self._state_path = state_path or storygraph_state_path()
+        self._factory = playwright_factory or _load_sync_playwright()
+        self._headless = headless
+        self._pw_cm = None
+        self._browser = None
+        self.page = None
+
+    def __enter__(self) -> StorygraphBrowser:
+        self._pw_cm = self._factory()
+        pw = self._pw_cm.__enter__()
+        self._browser = pw.chromium.launch(headless=self._headless)
+        context = self._browser.new_context(storage_state=str(self._state_path))
+        self.page = context.new_page()
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        try:
+            if self._browser is not None:
+                self._browser.close()
+        finally:
+            if self._pw_cm is not None:
+                self._pw_cm.__exit__(*exc)
+        return False

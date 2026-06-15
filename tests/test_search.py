@@ -131,6 +131,14 @@ def test_searcher_reuses_one_browser_for_multiple_queries(tmp_path):
     assert len(page.goto_urls) == 2
 
 
+def test_searcher_with_external_page_does_not_own_browser():
+    page = _FakePage([{"href": "/books/b1", "title": "T", "author": "A"}])
+    with StorygraphSearcher(page=page) as searcher:
+        results = searcher.search("q")
+    assert [c.book_id for c in results] == ["b1"]
+    assert len(page.goto_urls) == 1
+
+
 def test_search_books_single_shot(tmp_path):
     state = tmp_path / "state.json"
     state.write_text("{}")
