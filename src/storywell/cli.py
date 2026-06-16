@@ -52,6 +52,17 @@ ProfileOption = typer.Option(
     "--profile",
     help="Audible only: audible-cli profile name. Defaults to the primary profile.",
 )
+FileOption = typer.Option(
+    None,
+    "--file",
+    "-f",
+    help="File sources (goodreads, librarything, kobo): path to the export CSV / database.",
+)
+TokenOption = typer.Option(
+    None,
+    "--token",
+    help="API sources (hardcover): personal API token.",
+)
 
 
 def _version_callback(value: bool) -> None:
@@ -77,10 +88,12 @@ def _load_finished(
     source: str,
     *,
     threshold: float,
-    auth_file: Path | None,
-    profile: str | None,
+    auth_file: Path | None = None,
+    profile: str | None = None,
+    path: Path | None = None,
+    token: str | None = None,
 ) -> list[SourceBook]:
-    src = make_source(source, auth_file=auth_file, profile=profile)
+    src = make_source(source, auth_file=auth_file, profile=profile, path=path, token=token)
     return src.finished_books(threshold=threshold)
 
 
@@ -163,10 +176,19 @@ def list_books(
     threshold: float = ThresholdOption,
     auth_file: Path | None = AuthFileOption,
     profile: str | None = ProfileOption,
+    file: Path | None = FileOption,
+    token: str | None = TokenOption,
 ) -> None:
     """List the finished books a source reports."""
     try:
-        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+        books = _load_finished(
+            source,
+            threshold=threshold,
+            auth_file=auth_file,
+            profile=profile,
+            path=file,
+            token=token,
+        )
     except SourceError as err:
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err
@@ -241,6 +263,8 @@ def sync(
     threshold: float = ThresholdOption,
     auth_file: Path | None = AuthFileOption,
     profile: str | None = ProfileOption,
+    file: Path | None = FileOption,
+    token: str | None = TokenOption,
     dry_run: bool = typer.Option(
         False, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
     ),
@@ -271,7 +295,14 @@ def sync(
     from .storygraph.search import StorygraphSearcher
 
     try:
-        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+        books = _load_finished(
+            source,
+            threshold=threshold,
+            auth_file=auth_file,
+            profile=profile,
+            path=file,
+            token=token,
+        )
     except SourceError as err:
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err
@@ -459,6 +490,8 @@ def collections(
     threshold: float = ThresholdOption,
     auth_file: Path | None = AuthFileOption,
     profile: str | None = ProfileOption,
+    file: Path | None = FileOption,
+    token: str | None = TokenOption,
     dry_run: bool = typer.Option(
         True, "--dry-run/--no-dry-run", help="Preview detected collections; no writes."
     ),
@@ -478,7 +511,14 @@ def collections(
     from .storygraph.sync import TitleEntry
 
     try:
-        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+        books = _load_finished(
+            source,
+            threshold=threshold,
+            auth_file=auth_file,
+            profile=profile,
+            path=file,
+            token=token,
+        )
     except SourceError as err:
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err

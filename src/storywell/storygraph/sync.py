@@ -7,7 +7,15 @@ from typing import Any, Protocol
 
 from ..models import SourceBook
 from .editions import Edition, pick_edition
-from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
+from .matching import (
+    Candidate,
+    MatchResult,
+    MatchStatus,
+    is_isbn,
+    match_book,
+    normalize_isbn,
+    search_title,
+)
 from .reviews import compose_review, rating_to_stars
 from .session import StorygraphAuthError
 from .store import SyncStore
@@ -49,12 +57,37 @@ def query_for(book: SourceBook) -> str:
     return f"{search_title(book.title)} {author}".strip()
 
 
+def isbn_query(book: SourceBook) -> str | None:
+    """The book's normalized ISBN to search StoryGraph by, preferring ISBN-13, or None."""
+    for raw in (book.isbn13, book.isbn):
+        if is_isbn(raw):
+            return normalize_isbn(raw)
+    return None
+
+
+def match_for_book(book: SourceBook, search_fn: SearchFn) -> MatchResult:
+    """Resolve a StoryGraph match for a book: by ISBN if the source exports one, else by
+    title/author search.
+
+    The ISBN is searched first (StoryGraph's search box accepts ISBNs and usually returns the
+    exact edition), but the hit is still scored by title/author and only accepted when it clears
+    the normal MATCH bar. StoryGraph search is free-text, so a numeric ISBN query can return an
+    unrelated book — trusting it blindly would mark the wrong book read. A weak or empty ISBN
+    result falls back to the ordinary title/author search, so ISBN-less sources are unaffected.
+    """
+    author = book.authors[0] if book.authors else ""
+    isbn = isbn_query(book)
+    if isbn:
+        result = match_book(book.title, author, search_fn(isbn))
+        if result.status is MatchStatus.MATCH:
+            return result
+    return match_book(book.title, author, search_fn(query_for(book)))
+
+
 def plan_sync(books: Iterable[SourceBook], search_fn: SearchFn) -> list[SyncPlanItem]:
     items: list[SyncPlanItem] = []
     for book in books:
-        candidates = search_fn(query_for(book))
-        author = book.authors[0] if book.authors else ""
-        result = match_book(book.title, author, candidates)
+        result = match_for_book(book, search_fn)
         items.append(SyncPlanItem(book, result))
     return items
 
@@ -151,8 +184,7 @@ def run_sync(
 
             book_id = store.cached_book_id(book.key)
             if book_id is None:
-                author = book.authors[0] if book.authors else ""
-                result = match_book(book.title, author, search_fn(query_for(book)))
+                result = match_for_book(book, search_fn)
                 chosen = resolve_match(book, result, confirm_fn)
                 if chosen is None:
                     if result.status is MatchStatus.NO_MATCH:
