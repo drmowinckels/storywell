@@ -280,6 +280,7 @@ def sync(
                 writer=client,
                 store=store,
                 confirm_fn=_prompt_ambiguous,
+                edition_fn=searcher.resolve_edition,
             )
             review_outcome = run_review_sync(books, rater=client, store=store) if ratings else None
     store.save()
@@ -398,7 +399,12 @@ def collections(
                 if not chosen:
                     continue
                 entries = [
-                    TitleEntry(key=f"{book.key}::{t.lower()}", title=t, finish_date=finish_date)
+                    TitleEntry(
+                        key=f"{book.key}::{t.lower()}",
+                        title=t,
+                        finish_date=finish_date,
+                        media_format=book.media_format,
+                    )
                     for t in chosen
                 ]
                 outcome = run_title_sync(
@@ -407,6 +413,7 @@ def collections(
                     writer=client,
                     store=store,
                     confirm_fn=_prompt_ambiguous,
+                    edition_fn=searcher.resolve_edition,
                 )
                 totals["written"] += len(outcome.written)
                 totals["skipped"] += (

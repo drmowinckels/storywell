@@ -62,6 +62,11 @@ finished, in addition to anything the source itself flags as complete.
 a book is only (re)written if its finish date changed. Matches are keyed by `source:id`, so multiple
 vendors never collide.
 
+Because Audible is an audiobook source, Storywell marks the **audiobook edition** on StoryGraph:
+after matching a book it picks that work's audio edition and marks _that_ read, so your StoryGraph
+entry is tagged as the audio version. If a work has no audiobook edition, it falls back to the
+best-matching edition rather than skipping the book.
+
 ## Upgrading from `audible-storygraph-sync`
 
 The rename moved the config dir and namespaced sync-store keys under their source. Carry your saved
@@ -82,10 +87,12 @@ storywell migrate-store
 
 ## Adding a source
 
-A source is a class with a `name` and a `finished_books()` method that returns `SourceBook`s
+A source is a class with a `name`, a `media_format` (`"audio"`, `"ebook"`, `"print"`, or `""` when
+mixed/unknown), and a `finished_books()` method that returns `SourceBook`s
 (see [`src/storywell/sources/base.py`](src/storywell/sources/base.py)). Register it in
 [`src/storywell/sources/__init__.py`](src/storywell/sources/__init__.py) and it becomes available
-under `--source <name>`. The StoryGraph matching/write side is source-agnostic.
+under `--source <name>`. The StoryGraph matching/write side is source-agnostic; `media_format` is
+what tells it which edition to tag (e.g. an `"audio"` source marks the audiobook edition).
 
 ## Development
 

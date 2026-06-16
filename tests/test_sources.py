@@ -34,3 +34,8 @@ def test_make_source_unknown_name_lists_available():
 def test_source_book_key_namespaces_by_source():
     book = SourceBook(source="goodreads", source_id="12345", title="Dune")
     assert book.key == "goodreads:12345"
+
+
+def test_audible_source_declares_audio_format():
+    assert AudibleSource.media_format == "audio"
+    assert make_source("audible").media_format == "audio"

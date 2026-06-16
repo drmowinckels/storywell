@@ -16,8 +16,13 @@ class Source(Protocol):
     Implementations live in ``storywell.sources`` and are registered in the
     ``SOURCES`` table so the CLI can select one with ``--source``. Each source
     owns its own auth/fetch details and normalizes everything into ``SourceBook``.
+
+    ``media_format`` is the vendor's native format ("audio" for an audiobook source,
+    "ebook"/"print", or "" when mixed/unknown); each ``SourceBook`` carries the same
+    value so the sync can tag the matching StoryGraph edition.
     """
 
     name: str
+    media_format: str = ""
 
     def finished_books(self, *, threshold: float = 0.95) -> list[SourceBook]: ...

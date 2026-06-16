@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from ..config import storygraph_state_path
+from .editions import parse_editions, pick_edition, sg_formats_for
 from .matching import Candidate
 from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright
 
@@ -21,6 +22,12 @@ RESULT_SELECTOR = ".book-pane"
 DESCRIPTION_SELECTOR = ".trix-content"
 RESULT_TIMEOUT_MS = 8000
 _BOOK_ID_RE = re.compile(r"/books/([^/?#]+)")
+
+# Editions live at /books/{id}/editions, paginated ?page=N. Each .book-pane links to
+# its own /books/{edition_id} and states "Format: Audio|Paperback|Hardcover|Digital".
+# Verified against the live editions DOM (2026-06-15).
+EDITIONS_PANE_SELECTOR = ".browse-editions .book-pane"
+EDITIONS_MAX_PAGES = 3
 
 _EXPAND_SHOW_MORE_JS = """
 () => {
@@ -49,6 +56,18 @@ _EXTRACT_JS = """
 }
 """
 
+_EDITION_EXTRACT_JS = r"""
+(el) => {
+  const id = [...el.querySelectorAll("a[href*='/books/']")]
+    .map(a => (a.getAttribute('href') || '').match(/\/books\/([0-9a-f-]{36})/))
+    .filter(Boolean).map(m => m[1])[0] || '';
+  const info = el.querySelector('.edition-info');
+  const text = (info ? info.innerText : el.innerText) || '';
+  const m = text.match(/Format:\s*([A-Za-z]+)/);
+  return {id, format: m ? m[1] : ''};
+}
+"""
+
 
 def parse_book_id(href: str) -> str | None:
     match = _BOOK_ID_RE.search(href or "")
@@ -73,8 +92,8 @@ def _candidates_from_records(records: list[dict], max_results: int) -> list[Cand
     return candidates
 
 
-def _extract_records(page) -> list[dict]:
-    return [el.evaluate(_EXTRACT_JS) for el in page.query_selector_all(RESULT_SELECTOR)]
+def _extract_records(page, selector: str, js: str) -> list[dict]:
+    return [el.evaluate(js) for el in page.query_selector_all(selector)]
 
 
 def _search_url(query: str) -> str:
@@ -130,7 +149,9 @@ class StorygraphSearcher:
             self._page.wait_for_selector(RESULT_SELECTOR, timeout=RESULT_TIMEOUT_MS)
         except Exception:
             return []
-        return _candidates_from_records(_extract_records(self._page), self._max_results)
+        return _candidates_from_records(
+            _extract_records(self._page, RESULT_SELECTOR, _EXTRACT_JS), self._max_results
+        )
 
     def fetch_description(self, book_id: str) -> str:
         self._page.goto(f"{BASE_URL}/books/{book_id}", wait_until="domcontentloaded")
@@ -141,6 +162,38 @@ class StorygraphSearcher:
         self._page.evaluate(_EXPAND_SHOW_MORE_JS)
         self._page.wait_for_timeout(300)
         return self._page.evaluate(_READ_DESCRIPTION_JS)
+
+    def resolve_edition(
+        self, book_id: str, media_format: str, *, max_pages: int = EDITIONS_MAX_PAGES
+    ) -> str | None:
+        """Return the ``book_id`` of the edition matching ``media_format`` (e.g. the
+        audiobook edition), or None when the work has no such edition or the format is
+        unknown. Pages through ``/books/{id}/editions`` up to ``max_pages`` and stops at
+        the first match, so the matched edition itself counts when it already fits.
+
+        Edition tagging is a best-effort enhancement: any scrape failure returns None so
+        the caller falls back to the matched edition rather than aborting the whole sync."""
+        if not sg_formats_for(media_format):
+            return None
+        try:
+            for page_num in range(1, max_pages + 1):
+                self._page.goto(
+                    f"{BASE_URL}/books/{book_id}/editions?page={page_num}",
+                    wait_until="domcontentloaded",
+                )
+                try:
+                    self._page.wait_for_selector(EDITIONS_PANE_SELECTOR, timeout=RESULT_TIMEOUT_MS)
+                except Exception:
+                    break
+                records = _extract_records(self._page, EDITIONS_PANE_SELECTOR, _EDITION_EXTRACT_JS)
+                chosen = pick_edition(parse_editions(records), media_format)
+                if chosen is not None:
+                    return chosen
+                if self._page.query_selector(f"a[href*='editions?page={page_num + 1}']") is None:
+                    break
+        except Exception:
+            return None
+        return None
 
 
 def search_books(

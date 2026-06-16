@@ -21,13 +21,14 @@ from storywell.storygraph.sync import (
 )
 
 
-def _book(title, *authors, source_id="A", finished_at=None):
+def _book(title, *authors, source_id="A", finished_at=None, media_format=""):
     return SourceBook(
         source="audible",
         source_id=source_id,
         title=title,
         authors=tuple(authors),
         finished_at=finished_at,
+        media_format=media_format,
     )
 
 
@@ -213,6 +214,76 @@ def test_run_sync_dry_run_plans_without_writing(tmp_path):
     assert writer.calls == []
 
 
+class _FakeEditionResolver:
+    def __init__(self, mapping=None):
+        self.mapping = mapping or {}
+        self.calls = []
+
+    def __call__(self, book_id, media_format):
+        self.calls.append((book_id, media_format))
+        return self.mapping.get(book_id)
+
+
+def test_run_sync_marks_the_audio_edition_for_an_audiobook_source(tmp_path):
+    writer = _FakeWriter()
+    store = _store(tmp_path)
+    resolver = _FakeEditionResolver({"b1": "audio-ed"})
+    outcome = run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1", media_format="audio")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=store,
+        edition_fn=resolver,
+    )
+    assert resolver.calls == [("b1", "audio")]
+    assert writer.calls == [("audio-ed", None)]
+    assert outcome.written == ["audible:A1"]
+    assert store.cached_book_id("audible:A1") == "audio-ed"
+
+
+def test_run_sync_falls_back_to_best_match_when_no_audio_edition(tmp_path):
+    writer = _FakeWriter()
+    resolver = _FakeEditionResolver(mapping={})  # no audio edition for b1
+    run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1", media_format="audio")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=_store(tmp_path),
+        edition_fn=resolver,
+    )
+    assert writer.calls == [("b1", None)]
+
+
+def test_run_sync_skips_edition_resolution_without_media_format(tmp_path):
+    writer = _FakeWriter()
+    resolver = _FakeEditionResolver({"b1": "audio-ed"})
+    run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=_store(tmp_path),
+        edition_fn=resolver,
+    )
+    assert resolver.calls == []
+    assert writer.calls == [("b1", None)]
+
+
+def test_run_sync_does_not_re_resolve_cached_edition(tmp_path):
+    store = _store(tmp_path)
+    store.remember_match("audible:A1", "audio-ed")
+    resolver = _FakeEditionResolver({"audio-ed": "should-not-be-used"})
+    writer = _FakeWriter()
+    run_sync(
+        [_book("X", source_id="A1", media_format="audio")],
+        search_fn=lambda q: [],
+        writer=writer,
+        store=store,
+        edition_fn=resolver,
+    )
+    assert resolver.calls == []
+    assert writer.calls == [("audio-ed", None)]
+
+
 def test_run_sync_records_failure(tmp_path):
     outcome = run_sync(
         [_book("Hyperion", "Dan Simmons", source_id="A1")],
@@ -243,6 +314,24 @@ def test_run_title_sync_skips_already_synced(tmp_path):
     entries = [TitleEntry(key="audible:c::emma", title="Emma", finish_date=date(2020, 1, 1))]
     outcome = run_title_sync(entries, search_fn=lambda q: [], writer=_FakeWriter(), store=store)
     assert outcome.skipped_synced == ["audible:c::emma"]
+
+
+def test_run_title_sync_marks_audio_edition_when_entry_has_format(tmp_path):
+    entries = [
+        TitleEntry(key="audible:c::emma", title="Emma", media_format="audio"),
+    ]
+    writer = _FakeWriter()
+    resolver = _FakeEditionResolver({"b1": "audio-ed"})
+    outcome = run_title_sync(
+        entries,
+        search_fn=lambda q: [Candidate("b1", "Emma", "")],
+        writer=writer,
+        store=_store(tmp_path),
+        edition_fn=resolver,
+    )
+    assert resolver.calls == [("b1", "audio")]
+    assert writer.calls == [("audio-ed", None)]
+    assert outcome.written == ["audible:c::emma"]
 
 
 def test_run_title_sync_no_match(tmp_path):

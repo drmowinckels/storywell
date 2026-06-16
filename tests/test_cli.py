@@ -34,6 +34,9 @@ class _FakeSearcher:
     def search(self, query):
         return [Candidate("b1", "Hyperion", "Dan Simmons")]
 
+    def resolve_edition(self, book_id, media_format, **kwargs):
+        return None
+
 
 class _FakeClient:
     def __init__(self, *args, **kwargs):
@@ -188,6 +191,9 @@ class _FakeCollSearcher:
 
     def fetch_description(self, book_id):
         return "Included are the following: Emma, Persuasion."
+
+    def resolve_edition(self, book_id, media_format, **kwargs):
+        return None
 
 
 def _one_collection(*a, **k):
