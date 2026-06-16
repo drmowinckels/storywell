@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from storywell.storygraph.store import SyncStore
 
 
@@ -61,6 +63,16 @@ def test_load_tolerates_corrupt_json(tmp_path):
     store = SyncStore.load(path)
     assert store.mappings == {}
     assert store.synced == {}
+
+
+@pytest.mark.parametrize("payload", ["[]", "42", '"hello"', "null", '{"mappings": []}'])
+def test_load_tolerates_valid_json_of_wrong_shape(tmp_path, payload):
+    path = tmp_path / "s.json"
+    path.write_text(payload)
+    store = SyncStore.load(path)
+    assert store.mappings == {}
+    assert store.synced == {}
+    assert store.rated == {}
 
 
 def test_record_rated_and_is_rated(tmp_path):

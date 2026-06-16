@@ -12,6 +12,17 @@ def test_rating_to_stars_quarter_increments():
     assert rating_to_stars(3.75) == ("3", "75")
 
 
+def test_rating_to_stars_snaps_off_grid_to_nearest_quarter():
+    assert rating_to_stars(4.3) == ("4", "25")
+    assert rating_to_stars(3.7) == ("3", "75")
+    assert rating_to_stars(4.9) == ("5", "")
+
+
+def test_rating_to_stars_clamps_out_of_range():
+    assert rating_to_stars(6.0) == ("5", "")
+    assert rating_to_stars(-1.0) == ("0", "")
+
+
 def test_compose_review_combines_body_and_narrator_note():
     assert compose_review("loved it", ("Carrington MacDuffie",)) == (
         "loved it\n\nNarrated by Carrington MacDuffie."

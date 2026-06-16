@@ -189,6 +189,14 @@ def test_filter_finished_skips_unstarted_books():
     assert filter_finished(items) == []
 
 
+def test_filter_finished_skips_items_without_asin():
+    items = [
+        {"title": "No ASIN", "is_finished": True, "listening_status": {"is_finished": True}},
+        make_item(asin="A2", is_finished=True),
+    ]
+    assert [b.source_id for b in filter_finished(items)] == ["A2"]
+
+
 def test_locate_auth_file_prefers_explicit_path(tmp_path):
     explicit = tmp_path / "creds.json"
     explicit.write_text("{}")

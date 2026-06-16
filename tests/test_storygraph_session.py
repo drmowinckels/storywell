@@ -13,7 +13,18 @@ from storywell.storygraph.session import (
     _is_signed_in,
     is_authenticated,
     login,
+    raise_if_signed_out,
 )
+
+
+def test_raise_if_signed_out_raises_on_sign_in_url():
+    with pytest.raises(StorygraphAuthError):
+        raise_if_signed_out("https://app.thestorygraph.com/users/sign_in")
+
+
+def test_raise_if_signed_out_passes_for_other_urls():
+    assert raise_if_signed_out("https://app.thestorygraph.com/books/abc") is None
+    assert raise_if_signed_out("https://app.thestorygraph.com/") is None
 
 
 class _FakePage:

@@ -13,11 +13,12 @@ mocked page.
 
 from __future__ import annotations
 
+import contextlib
 from datetime import date
 from pathlib import Path
 
 from ..config import storygraph_state_path
-from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright
+from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright, raise_if_signed_out
 
 READ_STATUS_LABEL_SELECTOR = ".read-status-label"
 STATUS_READ_FORM_SELECTOR = "form[action*='/update-status'][action*='status=read']"
@@ -84,9 +85,16 @@ class StorygraphClient:
                 self._pw_cm.__exit__(*exc)
         return False
 
+    def _settle(self) -> None:
+        # Let the form POST + redirect finish before we re-read state, without a
+        # blind fixed sleep: returns as soon as the network is idle, capped at SETTLE_MS.
+        with contextlib.suppress(Exception):
+            self._page.wait_for_load_state("networkidle", timeout=SETTLE_MS)
+
     def current_status(self, book_id: str) -> str | None:
         page = self._page
         page.goto(f"{BASE_URL}/books/{book_id}", wait_until="domcontentloaded")
+        raise_if_signed_out(page.url)
         label = page.query_selector(READ_STATUS_LABEL_SELECTOR)
         return label.inner_text().strip().lower() if label else None
 
@@ -97,15 +105,21 @@ class StorygraphClient:
         # so when we have a date we add only that (one instance, correct date).
         # Setting status separately would auto-create a second instance dated today.
         if finish_date is not None:
-            return self._add_dated_read(book_id, finish_date)
-        return self._set_status_read()
+            submitted = self._add_dated_read(book_id, finish_date)
+        else:
+            submitted = self._set_status_read()
+        if not submitted:
+            return False
+        # Confirm the write actually landed; a silently-rejected submit must not be
+        # recorded as synced (it would be skipped forever on idempotent re-runs).
+        return self.current_status(book_id) == "read"
 
     def _set_status_read(self) -> bool:
         form = self._page.query_selector(STATUS_READ_FORM_SELECTOR)
         if form is None:
             return False
         form.evaluate("f => f.requestSubmit()")
-        self._page.wait_for_timeout(SETTLE_MS)
+        self._settle()
         return True
 
     def _add_dated_read(self, book_id: str, value: date) -> bool:
@@ -114,6 +128,7 @@ class StorygraphClient:
             f"{BASE_URL}{READ_INSTANCE_NEW_PATH}?book_id={book_id}",
             wait_until="domcontentloaded",
         )
+        raise_if_signed_out(page.url)
         fields = date_fields(value)
         for selector, field_value in (
             (DATE_YEAR_SELECTOR, fields["year"]),
@@ -129,7 +144,7 @@ class StorygraphClient:
         if submit is None:
             return False
         submit.click()
-        page.wait_for_timeout(SETTLE_MS)
+        self._settle()
         return True
 
     def write_review(
@@ -145,6 +160,7 @@ class StorygraphClient:
         'failed'. ``review[explanation]`` is a hidden Trix input set directly."""
         page = self._page
         page.goto(f"{BASE_URL}{REVIEW_NEW_PATH}?book_id={book_id}", wait_until="domcontentloaded")
+        raise_if_signed_out(page.url)
         stars = page.query_selector(STARS_INTEGER_SELECTOR)
         if stars is None:
             return "skipped"
@@ -161,5 +177,14 @@ class StorygraphClient:
         if submit is None:
             return "failed"
         submit.click()
-        page.wait_for_timeout(SETTLE_MS)
-        return "written"
+        self._settle()
+        # Confirm the review now exists; otherwise the submit was silently rejected
+        # and must not be recorded as rated (it would never be retried).
+        return "written" if self._review_recorded(book_id) else "failed"
+
+    def _review_recorded(self, book_id: str) -> bool:
+        page = self._page
+        page.goto(f"{BASE_URL}{REVIEW_NEW_PATH}?book_id={book_id}", wait_until="domcontentloaded")
+        raise_if_signed_out(page.url)
+        # A saved review makes /reviews/new redirect away, so the rating form is gone.
+        return page.query_selector(STARS_INTEGER_SELECTOR) is None

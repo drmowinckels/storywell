@@ -2,10 +2,10 @@ from datetime import UTC, datetime
 
 from typer.testing import CliRunner
 
-from storywell.cli import _choose_candidate, app
+from storywell.cli import _choose_candidate, _display_name, _prompt_ambiguous, app
 from storywell.models import SourceBook
 from storywell.storygraph import StorygraphDependencyError
-from storywell.storygraph.matching import Candidate, ScoredCandidate
+from storywell.storygraph.matching import Candidate, MatchResult, MatchStatus, ScoredCandidate
 
 runner = CliRunner()
 
@@ -59,6 +59,32 @@ def _one_book(*a, **k):
     return [
         SourceBook(source="audible", source_id="A1", title="Hyperion", authors=("Dan Simmons",))
     ]
+
+
+def test_display_name_with_and_without_authors():
+    with_authors = SourceBook(
+        source="audible", source_id="A", title="Dune", authors=("Frank Herbert",)
+    )
+    assert _display_name(with_authors) == "Dune by Frank Herbert"
+    bare = SourceBook(source="audible", source_id="B", title="Untitled")
+    assert _display_name(bare) == "Untitled"
+
+
+def test_prompt_ambiguous_returns_picked_candidate(monkeypatch):
+    monkeypatch.setattr("storywell.cli.typer.prompt", lambda *a, **k: "1")
+    best = ScoredCandidate(Candidate("b1", "T1", "A1"), 0.8, 0.8, 0.8)
+    alt = ScoredCandidate(Candidate("b2", "T2", "A2"), 0.78, 0.78, 0.78)
+    result = MatchResult(MatchStatus.AMBIGUOUS, best, (alt,))
+    book = SourceBook(source="audible", source_id="A", title="T1", authors=("A1",))
+    assert _prompt_ambiguous(book, result).book_id == "b1"
+
+
+def test_prompt_ambiguous_skip_returns_none(monkeypatch):
+    monkeypatch.setattr("storywell.cli.typer.prompt", lambda *a, **k: "s")
+    best = ScoredCandidate(Candidate("b1", "T1", "A1"), 0.8, 0.8, 0.8)
+    result = MatchResult(MatchStatus.AMBIGUOUS, best, ())
+    book = SourceBook(source="audible", source_id="A", title="T1")
+    assert _prompt_ambiguous(book, result) is None
 
 
 def test_choose_candidate_picks_by_number():
@@ -148,6 +174,38 @@ def test_cli_sync_writes_matches(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert "written: 1" in result.stdout
     assert (tmp_path / "store.json").exists()
+
+
+class _AuthSearcher:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def search(self, query):
+        from storywell.storygraph.session import StorygraphAuthError
+
+        raise StorygraphAuthError("StoryGraph session expired mid-run.")
+
+    def resolve_edition(self, book_id, media_format, **kwargs):
+        return None
+
+
+def test_cli_sync_aborts_and_saves_on_session_expiry(monkeypatch, tmp_path):
+    monkeypatch.setattr("storywell.cli._load_finished", _one_book)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
+    monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _AuthSearcher)
+    monkeypatch.setattr("storywell.storygraph.client.StorygraphClient", _FakeClient)
+    monkeypatch.setattr("storywell.config.sync_store_path", lambda: tmp_path / "store.json")
+    result = runner.invoke(app, ["sync"])
+    assert result.exit_code == 1
+    assert "session" in result.stdout.lower()
+    assert (tmp_path / "store.json").exists()  # progress persisted via finally
 
 
 def test_cli_sync_no_finished_books(monkeypatch):

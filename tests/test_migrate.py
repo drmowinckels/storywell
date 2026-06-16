@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from storywell.migrate import LEGACY_APP_DIR, migrate_legacy, reprefix_store
 
 
@@ -13,6 +15,11 @@ def test_reprefix_store_namespaces_keys_under_audible():
 
 def test_reprefix_store_tolerates_missing_sections():
     assert reprefix_store({}) == {"mappings": {}, "synced": {}}
+
+
+@pytest.mark.parametrize("payload", [[], 42, "string", None, {"mappings": []}])
+def test_reprefix_store_tolerates_wrong_shape(payload):
+    assert reprefix_store(payload) == {"mappings": {}, "synced": {}}
 
 
 def _write_legacy(tmp_path, *, state=True, store=True):
