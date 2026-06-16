@@ -1,0 +1,41 @@
+<script>
+  // Detect the visitor's system colour scheme on first load. Quarto only reads
+  // its own localStorage sentinel ("quarto-color-scheme": "default" | "alternate")
+  // and ignores prefers-color-scheme, so we seed that sentinel from the OS before
+  // Quarto's inline theme script runs — and keep following the OS until the
+  // visitor explicitly uses the toggle.
+  (function () {
+    try {
+      var KEY = "quarto-color-scheme";
+      var USER = "sw-scheme-user-set";
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      var systemSentinel = function () {
+        return mq.matches ? "alternate" : "default";
+      };
+
+      if (localStorage.getItem(USER) !== "true") {
+        localStorage.setItem(KEY, systemSentinel());
+      }
+
+      mq.addEventListener("change", function () {
+        if (localStorage.getItem(USER) === "true") return;
+        var current = localStorage.getItem(KEY) || "default";
+        if (
+          current !== systemSentinel() &&
+          typeof window.quartoToggleColorScheme === "function"
+        ) {
+          window.quartoToggleColorScheme();
+        }
+      });
+
+      document.addEventListener("click", function (e) {
+        if (
+          e.target.closest &&
+          e.target.closest(".quarto-color-scheme-toggle")
+        ) {
+          localStorage.setItem(USER, "true");
+        }
+      });
+    } catch (e) {}
+  })();
+</script>

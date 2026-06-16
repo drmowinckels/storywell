@@ -1,0 +1,75 @@
+---
+title: "Adding a source"
+description: "Wire a new vendor in behind the same --source flag."
+---
+
+The StoryGraph matching-and-writing side is source-agnostic. To add a vendor you implement one
+small class and register it; everything downstream — matching, edition tagging, the sync store,
+ratings — comes for free.
+
+## The `Source` protocol
+
+A source is any class satisfying the `Source` protocol in
+[`src/storywell/sources/base.py`](https://github.com/drmowinckels/storywell/blob/main/src/storywell/sources/base.py):
+
+```python
+class Source(Protocol):
+    name: str
+    media_format: str = ""   # "audio" | "ebook" | "print" | "" (mixed/unknown)
+
+    def finished_books(self, *, threshold: float = 0.95) -> list[SourceBook]: ...
+```
+
+- **`name`** is what users pass to `--source`.
+- **`media_format`** tells the sync which StoryGraph edition to tag. An `audio` source marks the
+  audiobook edition; `ebook`/`print` tag the best match; `""` leaves it to per-book resolution.
+- **`finished_books()`** returns `SourceBook`s — the normalised shape every source produces (title,
+  authors, ISBNs when available, `percent_complete`, `finished_at`, optional rating/review). Apply
+  the `threshold` to decide what counts as finished.
+
+## Register it
+
+Add the class to the `SOURCES` table in
+[`src/storywell/sources/__init__.py`](https://github.com/drmowinckels/storywell/blob/main/src/storywell/sources/__init__.py):
+
+```python
+SOURCES: dict[str, type[Source]] = {
+    AudibleSource.name: AudibleSource,
+    # ...
+    MyVendorSource.name: MyVendorSource,
+}
+```
+
+That's it — it now appears in `storywell sources` and works under `--source myvendor`.
+
+## Picking up CLI options
+
+`make_source()` inspects your constructor's signature and passes through only the options it
+declares, dropping the rest. So one CLI surface can carry the union of every source's options, and
+your source opts in to just what it needs:
+
+```python
+class MyVendorSource:
+    name = "myvendor"
+    media_format = "ebook"
+
+    def __init__(self, *, path: Path | None = None):  # picks up --file
+        ...
+```
+
+The CLI option names map to constructor parameters as: `--file → path`, `--token → token`,
+`--auth-file → auth_file`, `--profile → profile`, `--as-read → mark_read`, `--read-date →
+read_date`, `--collection → collections`. Declare the ones you want; ignore the others.
+
+## Reuse the CSV machinery
+
+If your vendor exports a CSV or TSV, subclass `CsvSource`
+([`src/storywell/sources/csv_source.py`](https://github.com/drmowinckels/storywell/blob/main/src/storywell/sources/csv_source.py))
+and implement only `row_to_book`. It handles delimiter detection, the finished filter, and ISBN
+unwrapping for you — that's how the Goodreads and LibraryThing sources stay small.
+
+## Ship it with tests
+
+Keep the pure parsing/mapping helpers (row → `SourceBook`, finished filter) as standalone functions
+so they're unit-testable without touching the network or a device — the existing sources all follow
+this `*_from_row` / injectable-transport pattern. New source, new tests, same change.

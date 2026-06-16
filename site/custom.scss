@@ -1,0 +1,306 @@
+/*-- scss:defaults --*/
+
+// Brand tokens (mirror _brand.yml so SCSS rules can reference them at compile time)
+$ink: #211f1c;
+$brass: #a8743a;
+$teal: #0e3a39;
+$parchment: #f4eee2;
+$cream: #f1ead9;
+
+$italiana: "Italiana", serif;
+$cormorant: "Cormorant Garamond", Georgia, serif;
+$manrope:
+  "Manrope",
+  -apple-system,
+  BlinkMacSystemFont,
+  sans-serif;
+
+// Bootstrap-facing chrome (light). dark.scss overrides these for the dark theme.
+$navbar-bg: $parchment;
+$navbar-light-color: rgba($ink, 0.72);
+$navbar-light-hover-color: $brass;
+$navbar-light-active-color: $brass;
+$navbar-light-brand-color: $ink;
+
+$link-color: $brass;
+$link-hover-color: darken($brass, 12%);
+
+$code-bg: $parchment;
+$code-color: $teal;
+
+/*-- scss:rules --*/
+
+// Semantic colour roles as CSS variables so the bespoke components below are
+// written once and re-themed by flipping these in dark.scss.
+:root {
+  --sw-ink: #211f1c;
+  --sw-brass: #a8743a;
+  --sw-teal: #0e3a39;
+  --sw-parchment: #f4eee2;
+  --sw-cream: #f1ead9;
+
+  --sw-surface: var(--sw-parchment);
+  --sw-border: rgba(33, 31, 28, 0.09);
+  --sw-muted: rgba(33, 31, 28, 0.55);
+  --sw-lead: rgba(33, 31, 28, 0.85);
+  --sw-hero-from: #f6f1e6;
+  --sw-hero-to: var(--sw-cream);
+  --sw-wordmark: var(--sw-ink);
+  --sw-spine: var(--sw-brass);
+  --sw-band-bg: var(--sw-teal);
+  --sw-band-fg: var(--sw-parchment);
+  --sw-band-link: #cf9a5a;
+  --sw-exp-fg: #5c2b2e;
+  --sw-exp-bg: rgba(178, 85, 64, 0.16);
+  --sw-btn-fg: var(--sw-cream);
+  --sw-ghost-fg: var(--sw-teal);
+  --sw-ghost-border: rgba(14, 58, 57, 0.4);
+
+  --sw-navbar-bg: #f4eee2;
+  --sw-navbar-fg: rgba(33, 31, 28, 0.74);
+  --sw-code-bg: #ece4d3;
+  --sw-code-fg: #0e3a39;
+}
+
+// --- Typographic primitives from the brand sheet -------------------------
+
+.eyebrow {
+  font-family: $manrope;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--sw-brass);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+}
+// Section eyebrows carry a short brass "shelf rule" — the recurring brand device
+.eyebrow.kicker::before {
+  content: "";
+  width: 1.6rem;
+  height: 1px;
+  background: var(--sw-brass);
+  display: inline-block;
+}
+
+.wordmark {
+  font-family: $italiana;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 400;
+  color: var(--sw-wordmark);
+  line-height: 1;
+}
+
+.lead-italic {
+  font-family: $cormorant;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.5rem;
+  color: var(--sw-lead);
+  line-height: 1.4;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: 0.01em;
+}
+
+// --- Navbar polish -------------------------------------------------------
+// Quarto bakes the navbar background from `background: light`, identical in both
+// themes, so we drive it (and inline code) from CSS vars that flip in dark.scss.
+
+#quarto-header .navbar {
+  background-color: var(--sw-navbar-bg) !important;
+  border-bottom: 1px solid var(--sw-border);
+}
+#quarto-header .navbar .nav-link,
+#quarto-header .navbar .navbar-brand,
+#quarto-header .navbar .menu-text,
+#quarto-header .navbar .quarto-navigation-tool {
+  color: var(--sw-navbar-fg) !important;
+}
+#quarto-header .navbar .nav-link:hover,
+#quarto-header .navbar .nav-link:focus,
+#quarto-header .navbar .nav-link.active,
+#quarto-header .navbar .quarto-navigation-tool:hover {
+  color: var(--sw-brass) !important;
+}
+.navbar-brand img {
+  height: 1.9rem;
+  width: auto;
+}
+
+code:not(.sourceCode) {
+  background-color: var(--sw-code-bg);
+  color: var(--sw-code-fg);
+}
+
+// --- Hero ----------------------------------------------------------------
+
+.hero {
+  text-align: center;
+  padding: 4.5rem 1rem 3.5rem;
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    var(--sw-hero-from) 0%,
+    var(--sw-hero-to) 72%
+  );
+  border-radius: 1rem;
+  margin-bottom: 3.5rem;
+}
+.hero img.hero-mark {
+  width: 132px;
+  height: auto;
+  margin-bottom: 1.5rem;
+}
+.hero .eyebrow {
+  justify-content: center;
+}
+.hero .wordmark {
+  font-size: clamp(2.8rem, 7vw, 4.6rem);
+}
+.hero .lead-italic {
+  max-width: 34rem;
+  margin: 1.25rem auto 2rem;
+}
+
+.cta-row {
+  display: flex;
+  gap: 0.85rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-brass,
+.btn-ghost {
+  font-family: $manrope;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.62rem 1.45rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  display: inline-block;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+.btn-brass {
+  background: var(--sw-brass);
+  color: var(--sw-btn-fg);
+  border: 1px solid var(--sw-brass);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--sw-ghost-fg);
+  border: 1px solid var(--sw-ghost-border);
+}
+.btn-brass:hover,
+.btn-ghost:hover {
+  transform: translateY(-2px);
+}
+.btn-ghost:hover {
+  border-color: var(--sw-ghost-fg);
+  color: var(--sw-ghost-fg);
+}
+
+// --- Sources: a shelf of spine-cards (echoes the mark's book spines) ------
+
+.sources-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+}
+.source-card {
+  background: var(--sw-surface);
+  border: 1px solid var(--sw-border);
+  border-left: 3px solid var(--sw-spine);
+  border-radius: 0 0.7rem 0.7rem 0;
+  padding: 1.25rem 1.25rem 1.4rem;
+  transition:
+    transform 0.15s ease,
+    border-left-width 0.15s ease;
+}
+.source-card:hover {
+  transform: translateY(-2px);
+  border-left-width: 6px;
+}
+.source-card h3 {
+  font-family: $cormorant;
+  font-weight: 600;
+  margin: 0 0 0.15rem;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+.source-card .fmt {
+  font-family: $manrope;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sw-muted);
+}
+.source-card p {
+  margin: 0.6rem 0 0;
+  font-size: 0.95rem;
+}
+
+.experimental {
+  font-family: $manrope;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--sw-exp-fg);
+  background: var(--sw-exp-bg);
+  padding: 0.12rem 0.45rem;
+  border-radius: 1rem;
+  vertical-align: middle;
+}
+
+// --- Closing band --------------------------------------------------------
+
+.band {
+  background: var(--sw-band-bg);
+  color: var(--sw-band-fg);
+  border-radius: 1rem;
+  padding: 2.5rem 2rem;
+  margin: 3.5rem 0;
+}
+.band h2,
+.band h3 {
+  color: var(--sw-band-fg);
+}
+.band a {
+  color: var(--sw-band-link);
+}
+
+// --- Accessibility floor -------------------------------------------------
+
+a:focus-visible,
+.btn-brass:focus-visible,
+.btn-ghost:focus-visible,
+.source-card:focus-within {
+  outline: 2px solid var(--sw-brass);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-brass,
+  .btn-ghost,
+  .source-card {
+    transition: none;
+  }
+  .btn-brass:hover,
+  .btn-ghost:hover,
+  .source-card:hover {
+    transform: none;
+  }
+}

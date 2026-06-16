@@ -1,0 +1,47 @@
+meta:
+  name: Storywell
+  link:
+    home: https://drmowinckels.github.io/storywell/
+    github: https://github.com/drmowinckels/storywell
+
+color:
+  palette:
+    ink: "#211F1C"
+    brass: "#A8743A"
+    teal: "#0E3A39"
+    parchment: "#F4EEE2"
+    cream: "#F1EAD9"
+    # Bootstrap-name aliases so brand.yml-aware tooling resolves them
+    orange: brass
+    teal-brand: teal
+  foreground: ink
+  background: cream
+  primary: brass
+  secondary: teal
+  info: teal
+  link: brass
+
+typography:
+  fonts:
+    - family: Italiana
+      source: google
+      weight: [400]
+      style: [normal]
+    - family: Cormorant Garamond
+      source: google
+      weight: [400, 500, 600]
+      style: [normal, italic]
+    - family: Manrope
+      source: google
+      weight: [400, 500, 600, 700]
+      style: [normal]
+  base:
+    family: Manrope
+    size: 1.05rem
+    line-height: 1.65
+  headings:
+    family: Cormorant Garamond
+    weight: 600
+    color: teal
+  link:
+    color: brass

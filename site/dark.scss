@@ -1,0 +1,70 @@
+/*-- scss:defaults --*/
+
+// Dark palette, grounded in the brand sheet's extended tones (deep teal-ink
+// ground, parchment ink, the lighter brass #cf9a5a for accents on dark).
+$dark-bg: #0e1714;
+$dark-surface: #16201c;
+$dark-fg: #e6e2d8;
+$dark-head: #ece5d6;
+$dark-brass: #cf9a5a;
+$dark-border: rgba(230, 226, 216, 0.12);
+
+$body-bg: $dark-bg;
+$body-color: $dark-fg;
+$headings-color: $dark-head;
+$border-color: $dark-border;
+
+$link-color: $dark-brass;
+$link-hover-color: lighten($dark-brass, 8%);
+
+// Recolour the (light-class) navbar to read as dark-on-dark
+$navbar-bg: #121a16;
+$navbar-light-color: rgba($dark-fg, 0.72);
+$navbar-light-hover-color: $dark-brass;
+$navbar-light-active-color: $dark-brass;
+$navbar-light-brand-color: $dark-head;
+
+$code-bg: $dark-surface;
+$code-color: #d6cfbf;
+
+/*-- scss:rules --*/
+
+// Flip the bespoke-component variables. This stylesheet is only active in dark
+// mode, so a plain :root override is safe.
+:root {
+  --sw-surface: #16201c;
+  --sw-border: rgba(230, 226, 216, 0.12);
+  --sw-muted: rgba(230, 226, 216, 0.55);
+  --sw-lead: rgba(230, 226, 216, 0.86);
+  --sw-hero-from: #1b2620;
+  --sw-hero-to: #0e1714;
+  --sw-wordmark: #ece5d6;
+  --sw-brass: #cf9a5a;
+  --sw-spine: #cf9a5a;
+  --sw-band-bg: #0a2c2b;
+  --sw-band-fg: #e6e2d8;
+  --sw-band-link: #e0b072;
+  --sw-exp-fg: #ff8a80;
+  --sw-exp-bg: rgba(255, 138, 128, 0.14);
+  --sw-btn-fg: #14201b;
+  --sw-ghost-fg: #d6cfbf;
+  --sw-ghost-border: rgba(214, 207, 191, 0.42);
+
+  --sw-navbar-bg: #121a16;
+  --sw-navbar-fg: rgba(230, 226, 216, 0.76);
+  --sw-code-bg: #1d2722;
+  --sw-code-fg: #e0b072;
+}
+
+// Brand applies a teal heading colour via its own variable; force light on dark.
+h1,
+h2,
+h3,
+h4,
+h5 {
+  color: var(--sw-wordmark);
+}
+.band h2,
+.band h3 {
+  color: var(--sw-band-fg);
+}

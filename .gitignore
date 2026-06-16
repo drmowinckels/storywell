@@ -15,5 +15,9 @@ htmlcov/
 .ruff_cache/
 .DS_Store
 
+# Quarto docs site build artifacts
+site/_site/
+**/.quarto/
+
 # Local data / credentials from the old good_audible_story_sync tool
 *.db
