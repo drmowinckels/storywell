@@ -39,14 +39,23 @@ def legacy_dir() -> Path:
 
 
 def reprefix_store(data: dict) -> dict:
-    """Namespace legacy bare-ASIN keys under the audible source."""
+    """Namespace legacy bare-ASIN keys under the audible source.
 
-    def prefix(section: dict) -> dict:
-        return {f"{LEGACY_SOURCE_PREFIX}:{key}": value for key, value in section.items()}
+    Tolerant of a corrupt or wrong-shaped legacy file: a non-dict at any level
+    degrades to an empty section rather than crashing the migration.
+    """
+    data = data if isinstance(data, dict) else {}
+
+    def section(name: str) -> dict:
+        value = data.get(name, {})
+        return value if isinstance(value, dict) else {}
+
+    def prefix(values: dict) -> dict:
+        return {f"{LEGACY_SOURCE_PREFIX}:{key}": value for key, value in values.items()}
 
     return {
-        "mappings": prefix(dict(data.get("mappings", {}))),
-        "synced": prefix(dict(data.get("synced", {}))),
+        "mappings": prefix(section("mappings")),
+        "synced": prefix(section("synced")),
     }
 
 

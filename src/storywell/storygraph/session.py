@@ -23,6 +23,22 @@ class StorygraphAuthError(RuntimeError):
     pass
 
 
+SESSION_EXPIRED_MESSAGE = (
+    "StoryGraph redirected to the sign-in page — the saved session is no longer "
+    "authenticated. Run `storygraph-login` again, then re-run."
+)
+
+
+def raise_if_signed_out(url: str) -> None:
+    """Raise if a navigation landed back on the sign-in page (session expired mid-run).
+
+    Lets a dead session surface as a clear, fatal error instead of silently
+    masquerading as 'no search results' or 'review already exists'.
+    """
+    if SIGN_IN_PATH in url:
+        raise StorygraphAuthError(SESSION_EXPIRED_MESSAGE)
+
+
 def _load_sync_playwright() -> PlaywrightFactory:
     try:
         from playwright.sync_api import sync_playwright

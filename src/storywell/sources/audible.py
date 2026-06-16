@@ -185,7 +185,7 @@ def parse_review(item: dict[str, Any]) -> str | None:
 def item_to_book(item: dict[str, Any]) -> SourceBook:
     return SourceBook(
         source=SOURCE_NAME,
-        source_id=item["asin"],
+        source_id=item.get("asin", ""),
         title=item.get("title", "").strip(),
         authors=parse_authors(item),
         narrators=parse_narrators(item),
@@ -202,6 +202,8 @@ def filter_finished(items: Iterable[dict[str, Any]], threshold: float = 0.95) ->
     cutoff = threshold * 100.0
     finished: list[SourceBook] = []
     for raw in items:
+        if not raw.get("asin"):
+            continue  # no stable id to key the sync store on; can't sync it
         book = item_to_book(raw)
         if book.is_finished or book.percent_complete >= cutoff:
             finished.append(book)

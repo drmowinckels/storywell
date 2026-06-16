@@ -14,7 +14,7 @@ from urllib.parse import quote_plus
 
 from ..config import storygraph_state_path
 from .matching import Candidate
-from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright
+from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright, raise_if_signed_out
 
 SEARCH_URL = f"{BASE_URL}/browse"
 RESULT_SELECTOR = ".book-pane"
@@ -55,26 +55,27 @@ def parse_book_id(href: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _record_to_candidate(record: dict) -> Candidate | None:
+    book_id = parse_book_id(record.get("href", ""))
+    if not book_id or book_id == "new":
+        return None
+    return Candidate(
+        book_id=book_id,
+        title=(record.get("title") or "").strip(),
+        author=(record.get("author") or "").strip(),
+    )
+
+
 def _candidates_from_records(records: list[dict], max_results: int) -> list[Candidate]:
     candidates: list[Candidate] = []
     for record in records:
-        book_id = parse_book_id(record.get("href", ""))
-        if not book_id or book_id == "new":
+        candidate = _record_to_candidate(record)
+        if candidate is None:
             continue
-        candidates.append(
-            Candidate(
-                book_id=book_id,
-                title=(record.get("title") or "").strip(),
-                author=(record.get("author") or "").strip(),
-            )
-        )
+        candidates.append(candidate)
         if len(candidates) >= max_results:
             break
     return candidates
-
-
-def _extract_records(page) -> list[dict]:
-    return [el.evaluate(_EXTRACT_JS) for el in page.query_selector_all(RESULT_SELECTOR)]
 
 
 def _search_url(query: str) -> str:
@@ -126,14 +127,24 @@ class StorygraphSearcher:
 
     def search(self, query: str) -> list[Candidate]:
         self._page.goto(_search_url(query), wait_until="domcontentloaded")
+        raise_if_signed_out(self._page.url)
         try:
             self._page.wait_for_selector(RESULT_SELECTOR, timeout=RESULT_TIMEOUT_MS)
         except Exception:
-            return []
-        return _candidates_from_records(_extract_records(self._page), self._max_results)
+            return []  # selector never appeared: genuinely no results (session checked above)
+        candidates: list[Candidate] = []
+        for element in self._page.query_selector_all(RESULT_SELECTOR):
+            candidate = _record_to_candidate(element.evaluate(_EXTRACT_JS))
+            if candidate is None:
+                continue
+            candidates.append(candidate)
+            if len(candidates) >= self._max_results:
+                break
+        return candidates
 
     def fetch_description(self, book_id: str) -> str:
         self._page.goto(f"{BASE_URL}/books/{book_id}", wait_until="domcontentloaded")
+        raise_if_signed_out(self._page.url)
         try:
             self._page.wait_for_selector(DESCRIPTION_SELECTOR, timeout=RESULT_TIMEOUT_MS)
         except Exception:

@@ -35,12 +35,19 @@ class SyncStore:
         data: dict = {}
         if path.exists():
             with contextlib.suppress(json.JSONDecodeError, OSError):
-                data = json.loads(path.read_text())
+                parsed = json.loads(path.read_text())
+                if isinstance(parsed, dict):
+                    data = parsed
+
+        def section(name: str) -> dict:
+            value = data.get(name, {})
+            return dict(value) if isinstance(value, dict) else {}
+
         return cls(
             path=path,
-            mappings=dict(data.get("mappings", {})),
-            synced=dict(data.get("synced", {})),
-            rated=dict(data.get("rated", {})),
+            mappings=section("mappings"),
+            synced=section("synced"),
+            rated=section("rated"),
         )
 
     def cached_book_id(self, key: str) -> str | None:

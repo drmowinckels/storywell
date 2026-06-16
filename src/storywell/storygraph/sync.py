@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from ..models import SourceBook
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
 from .reviews import compose_review, rating_to_stars
+from .session import StorygraphAuthError
 from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
@@ -85,34 +86,39 @@ def run_sync(
 ) -> SyncOutcome:
     outcome = SyncOutcome()
     for book in books:
-        finished_on = _finish_date(book)
-        if store.is_synced(book.key, finished_on):
-            outcome.skipped_synced.append(book.key)
-            continue
-
-        book_id = store.cached_book_id(book.key)
-        if book_id is None:
-            author = book.authors[0] if book.authors else ""
-            result = match_book(book.title, author, search_fn(query_for(book)))
-            chosen = resolve_match(book, result, confirm_fn)
-            if chosen is None:
-                if result.status is MatchStatus.NO_MATCH:
-                    outcome.no_match.append(book.key)
-                else:
-                    outcome.ambiguous_skipped.append(book.key)
+        try:
+            finished_on = _finish_date(book)
+            if store.is_synced(book.key, finished_on):
+                outcome.skipped_synced.append(book.key)
                 continue
-            book_id = chosen.book_id
-            store.remember_match(book.key, book_id)
 
-        if dry_run:
-            outcome.planned.append(book.key)
-            continue
+            book_id = store.cached_book_id(book.key)
+            if book_id is None:
+                author = book.authors[0] if book.authors else ""
+                result = match_book(book.title, author, search_fn(query_for(book)))
+                chosen = resolve_match(book, result, confirm_fn)
+                if chosen is None:
+                    if result.status is MatchStatus.NO_MATCH:
+                        outcome.no_match.append(book.key)
+                    else:
+                        outcome.ambiguous_skipped.append(book.key)
+                    continue
+                book_id = chosen.book_id
+                store.remember_match(book.key, book_id)
 
-        if writer.mark_finished(book_id, finished_on):
-            store.record(book.key, book_id, finished_on)
-            outcome.written.append(book.key)
-        else:
-            outcome.failed.append(book.key)
+            if dry_run:
+                outcome.planned.append(book.key)
+                continue
+
+            if writer.mark_finished(book_id, finished_on):
+                store.record(book.key, book_id, finished_on)
+                outcome.written.append(book.key)
+            else:
+                outcome.failed.append(book.key)
+        except StorygraphAuthError:
+            raise  # a dead session is fatal; don't bury it as a per-book failure
+        except Exception:
+            outcome.failed.append(book.key)  # one flaky book must not abort the batch
 
     return outcome
 
@@ -141,32 +147,37 @@ def run_title_sync(
     """
     outcome = SyncOutcome()
     for entry in entries:
-        if store.is_synced(entry.key, entry.finish_date):
-            outcome.skipped_synced.append(entry.key)
-            continue
-
-        book_id = store.cached_book_id(entry.key)
-        if book_id is None:
-            query = f"{search_title(entry.title)} {entry.author}".strip()
-            result = match_book(entry.title, entry.author, search_fn(query))
-            chosen = resolve_match(entry, result, confirm_fn)
-            if chosen is None:
-                if result.status is MatchStatus.NO_MATCH:
-                    outcome.no_match.append(entry.key)
-                else:
-                    outcome.ambiguous_skipped.append(entry.key)
+        try:
+            if store.is_synced(entry.key, entry.finish_date):
+                outcome.skipped_synced.append(entry.key)
                 continue
-            book_id = chosen.book_id
-            store.remember_match(entry.key, book_id)
 
-        if dry_run:
-            outcome.planned.append(entry.key)
-            continue
+            book_id = store.cached_book_id(entry.key)
+            if book_id is None:
+                query = f"{search_title(entry.title)} {entry.author}".strip()
+                result = match_book(entry.title, entry.author, search_fn(query))
+                chosen = resolve_match(entry, result, confirm_fn)
+                if chosen is None:
+                    if result.status is MatchStatus.NO_MATCH:
+                        outcome.no_match.append(entry.key)
+                    else:
+                        outcome.ambiguous_skipped.append(entry.key)
+                    continue
+                book_id = chosen.book_id
+                store.remember_match(entry.key, book_id)
 
-        if writer.mark_finished(book_id, entry.finish_date):
-            store.record(entry.key, book_id, entry.finish_date)
-            outcome.written.append(entry.key)
-        else:
+            if dry_run:
+                outcome.planned.append(entry.key)
+                continue
+
+            if writer.mark_finished(book_id, entry.finish_date):
+                store.record(entry.key, book_id, entry.finish_date)
+                outcome.written.append(entry.key)
+            else:
+                outcome.failed.append(entry.key)
+        except StorygraphAuthError:
+            raise
+        except Exception:
             outcome.failed.append(entry.key)
 
     return outcome
@@ -186,39 +197,44 @@ def run_review_sync(
     review is left untouched (the writer reports 'skipped')."""
     outcome = SyncOutcome()
     for book in books:
-        if store.is_rated(book.key):
-            outcome.skipped_synced.append(book.key)
-            continue
-        book_id = store.cached_book_id(book.key)
-        if book_id is None:
-            outcome.no_match.append(book.key)
-            continue
+        try:
+            if store.is_rated(book.key):
+                outcome.skipped_synced.append(book.key)
+                continue
+            book_id = store.cached_book_id(book.key)
+            if book_id is None:
+                outcome.no_match.append(book.key)
+                continue
 
-        stars_integer, stars_decimal = ("", "")
-        if book.rating:
-            stars_integer, stars_decimal = rating_to_stars(book.rating)
-        narrators = book.narrators if narrator_note else ()
-        explanation = compose_review(book.review, narrators) or ""
-        if not stars_integer and not explanation:
-            continue
+            stars_integer, stars_decimal = ("", "")
+            if book.rating:
+                stars_integer, stars_decimal = rating_to_stars(book.rating)
+            narrators = book.narrators if narrator_note else ()
+            explanation = compose_review(book.review, narrators) or ""
+            if not stars_integer and not explanation:
+                continue
 
-        if dry_run:
-            outcome.planned.append(book.key)
-            continue
+            if dry_run:
+                outcome.planned.append(book.key)
+                continue
 
-        status = rater.write_review(
-            book_id,
-            stars_integer=stars_integer,
-            stars_decimal=stars_decimal,
-            explanation=explanation,
-        )
-        if status == "written":
-            store.record_rated(book.key)
-            outcome.written.append(book.key)
-        elif status == "skipped":
-            store.record_rated(book.key)
-            outcome.skipped_synced.append(book.key)
-        else:
+            status = rater.write_review(
+                book_id,
+                stars_integer=stars_integer,
+                stars_decimal=stars_decimal,
+                explanation=explanation,
+            )
+            if status == "written":
+                store.record_rated(book.key)
+                outcome.written.append(book.key)
+            elif status == "skipped":
+                store.record_rated(book.key)
+                outcome.skipped_synced.append(book.key)
+            else:
+                outcome.failed.append(book.key)
+        except StorygraphAuthError:
+            raise
+        except Exception:
             outcome.failed.append(book.key)
 
     return outcome
