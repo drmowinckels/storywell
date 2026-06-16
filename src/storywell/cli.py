@@ -63,6 +63,23 @@ TokenOption = typer.Option(
     "--token",
     help="API sources (hardcover): personal API token.",
 )
+AsReadOption = typer.Option(
+    False,
+    "--as-read",
+    help="LibraryThing only: treat every catalogued book as read (it's a catalogue, not a "
+    "read tracker).",
+)
+ReadDateOption = typer.Option(
+    False,
+    "--read-date",
+    help="LibraryThing only: stamp today's date as the finish date for --as-read books that "
+    "have no Date Read.",
+)
+CollectionOption = typer.Option(
+    None,
+    "--collection",
+    help="LibraryThing only: only import books in this collection (repeatable; omit for all).",
+)
 
 
 def _version_callback(value: bool) -> None:
@@ -92,8 +109,20 @@ def _load_finished(
     profile: str | None = None,
     path: Path | None = None,
     token: str | None = None,
+    mark_read: bool = False,
+    read_date: bool = False,
+    collections: tuple[str, ...] = (),
 ) -> list[SourceBook]:
-    src = make_source(source, auth_file=auth_file, profile=profile, path=path, token=token)
+    src = make_source(
+        source,
+        auth_file=auth_file,
+        profile=profile,
+        path=path,
+        token=token,
+        mark_read=mark_read,
+        read_date=read_date,
+        collections=collections,
+    )
     return src.finished_books(threshold=threshold)
 
 
@@ -178,6 +207,9 @@ def list_books(
     profile: str | None = ProfileOption,
     file: Path | None = FileOption,
     token: str | None = TokenOption,
+    as_read: bool = AsReadOption,
+    read_date: bool = ReadDateOption,
+    collection: list[str] = CollectionOption,
 ) -> None:
     """List the finished books a source reports."""
     try:
@@ -188,6 +220,9 @@ def list_books(
             profile=profile,
             path=file,
             token=token,
+            mark_read=as_read,
+            read_date=read_date,
+            collections=tuple(collection or ()),
         )
     except SourceError as err:
         console.print(str(err), style="red")
@@ -265,6 +300,9 @@ def sync(
     profile: str | None = ProfileOption,
     file: Path | None = FileOption,
     token: str | None = TokenOption,
+    as_read: bool = AsReadOption,
+    read_date: bool = ReadDateOption,
+    collection: list[str] = CollectionOption,
     dry_run: bool = typer.Option(
         False, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
     ),
@@ -302,6 +340,9 @@ def sync(
             profile=profile,
             path=file,
             token=token,
+            mark_read=as_read,
+            read_date=read_date,
+            collections=tuple(collection or ()),
         )
     except SourceError as err:
         console.print(str(err), style="red")
