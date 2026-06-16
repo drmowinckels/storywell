@@ -53,6 +53,7 @@ storywell list --source audible -t 0.9     # lower the "finished" threshold
 storywell storygraph-login                 # log in to StoryGraph once (saves a session)
 storywell sync --dry-run                   # preview the StoryGraph match plan
 storywell sync                             # mark finished books as read on StoryGraph
+storywell retag                            # report which synced books are on a non-audio edition
 ```
 
 `--threshold` (default `0.95`) sets the listening-progress cutoff above which a book is treated as
@@ -66,6 +67,10 @@ Because Audible is an audiobook source, Storywell marks the **audiobook edition*
 after matching a book it picks that work's audio edition and marks _that_ read, so your StoryGraph
 entry is tagged as the audio version. If a work has no audiobook edition, it falls back to the
 best-matching edition rather than skipping the book.
+
+`retag` is a read-only report (no writes) for books matched before audio-edition tagging existed: it
+shows, per already-matched book, whether it's already on the audio edition, could be moved to one, or
+has no audio edition. Use it to size a back-fill; applying the moves is not implemented yet.
 
 ## Upgrading from `audible-storygraph-sync`
 

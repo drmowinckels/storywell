@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any, Protocol
 
 from ..models import SourceBook
+from .editions import Edition, pick_edition
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
 from .reviews import compose_review, rating_to_stars
 from .store import SyncStore
@@ -13,6 +14,7 @@ from .store import SyncStore
 SearchFn = Callable[[str], list[Candidate]]
 ConfirmFn = Callable[[Any, MatchResult], "Candidate | None"]
 EditionFn = Callable[[str, str], "str | None"]
+EditionsFn = Callable[[str], list[Edition]]
 
 
 class Writer(Protocol):
@@ -61,6 +63,48 @@ def summarize(items: Iterable[SyncPlanItem]) -> dict[MatchStatus, int]:
     for item in items:
         counts[item.result.status] += 1
     return counts
+
+
+RETAG_FORMAT = "audio"
+
+
+@dataclass(frozen=True)
+class RetagItem:
+    """One already-matched book's audio-edition status, for the read-only retag report."""
+
+    key: str
+    current_id: str
+    current_format: str
+    audio_id: str | None
+
+    @property
+    def status(self) -> str:
+        if not self.current_format and self.audio_id is None:
+            return "unknown"  # could not read the editions page
+        if self.current_format == RETAG_FORMAT:
+            return "already_audio"
+        return "retaggable" if self.audio_id else "no_audio_edition"
+
+
+def plan_retag(
+    books: Iterable[SourceBook], *, store: SyncStore, editions_fn: EditionsFn
+) -> list[RetagItem]:
+    """Report which already-matched audiobook-source books are on a non-audio StoryGraph
+    edition (and whether an audio edition exists to move them to). Read-only: inspects the
+    cached match for each book and the work's editions; never writes."""
+    items: list[RetagItem] = []
+    for book in books:
+        if book.media_format != RETAG_FORMAT:
+            continue
+        current_id = store.cached_book_id(book.key)
+        if current_id is None:
+            continue
+        editions = editions_fn(current_id)
+        current_format = next((e.format for e in editions if e.book_id == current_id), "")
+        items.append(
+            RetagItem(book.key, current_id, current_format, pick_edition(editions, RETAG_FORMAT))
+        )
+    return items
 
 
 def _finish_date(book: SourceBook) -> date | None:

@@ -7,10 +7,12 @@ from storywell.storygraph.matching import (
     MatchStatus,
     ScoredCandidate,
 )
+from storywell.storygraph.editions import Edition
 from storywell.storygraph.store import SyncStore
 from storywell.storygraph.sync import (
     SyncPlanItem,
     TitleEntry,
+    plan_retag,
     plan_sync,
     query_for,
     resolve_match,
@@ -401,3 +403,48 @@ def test_run_review_sync_existing_storygraph_review_recorded_as_done(tmp_path):
     outcome = run_review_sync([book], rater=_FakeRater(status="skipped"), store=store)
     assert outcome.skipped_synced == [book.key]
     assert store.is_rated(book.key) is True
+
+
+def _editions_fn(mapping):
+    return lambda book_id: mapping.get(book_id, [])
+
+
+def test_plan_retag_classifies_each_matched_book(tmp_path):
+    store = _store(tmp_path)
+    store.remember_match("audible:A", "pap")  # on paperback, audio exists -> retaggable
+    store.remember_match("audible:B", "aud")  # already on audio
+    store.remember_match("audible:C", "only")  # paperback only -> no audio edition
+    store.remember_match("audible:D", "boom")  # editions unreadable -> unknown
+    books = [
+        _book("A", source_id="A", media_format="audio"),
+        _book("B", source_id="B", media_format="audio"),
+        _book("C", source_id="C", media_format="audio"),
+        _book("D", source_id="D", media_format="audio"),
+    ]
+    editions_fn = _editions_fn(
+        {
+            "pap": [Edition("pap", "paperback"), Edition("aud2", "audio")],
+            "aud": [Edition("aud", "audio"), Edition("pap2", "paperback")],
+            "only": [Edition("only", "paperback")],
+            "boom": [],
+        }
+    )
+    items = {i.key: i for i in plan_retag(books, store=store, editions_fn=editions_fn)}
+    assert items["audible:A"].status == "retaggable"
+    assert items["audible:A"].audio_id == "aud2"
+    assert items["audible:B"].status == "already_audio"
+    assert items["audible:C"].status == "no_audio_edition"
+    assert items["audible:D"].status == "unknown"
+
+
+def test_plan_retag_skips_unmatched_and_non_audio_books(tmp_path):
+    store = _store(tmp_path)
+    store.remember_match("audible:MATCHED", "pap")
+    books = [
+        _book("Unmatched", source_id="UNMATCHED", media_format="audio"),  # no mapping
+        _book("Ebook", source_id="EBK", media_format="ebook"),  # not an audio source
+        _book("Matched", source_id="MATCHED", media_format="audio"),
+    ]
+    editions_fn = _editions_fn({"pap": [Edition("pap", "paperback"), Edition("a", "audio")]})
+    items = plan_retag(books, store=store, editions_fn=editions_fn)
+    assert [i.key for i in items] == ["audible:MATCHED"]

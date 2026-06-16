@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 from ..config import storygraph_state_path
-from .editions import parse_editions, pick_edition, sg_formats_for
+from .editions import Edition, parse_editions, pick_edition, sg_formats_for
 from .matching import Candidate
 from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright
 
@@ -163,6 +163,24 @@ class StorygraphSearcher:
         self._page.wait_for_timeout(300)
         return self._page.evaluate(_READ_DESCRIPTION_JS)
 
+    def _edition_pages(self, book_id: str, max_pages: int):
+        """Yield each ``/books/{id}/editions`` page as an ``Edition`` list, in document
+        order, stopping at the last page (no next-page link) or a page with no panes."""
+        for page_num in range(1, max_pages + 1):
+            self._page.goto(
+                f"{BASE_URL}/books/{book_id}/editions?page={page_num}",
+                wait_until="domcontentloaded",
+            )
+            try:
+                self._page.wait_for_selector(EDITIONS_PANE_SELECTOR, timeout=RESULT_TIMEOUT_MS)
+            except Exception:
+                return
+            yield parse_editions(
+                _extract_records(self._page, EDITIONS_PANE_SELECTOR, _EDITION_EXTRACT_JS)
+            )
+            if self._page.query_selector(f"a[href*='editions?page={page_num + 1}']") is None:
+                return
+
     def resolve_edition(
         self, book_id: str, media_format: str, *, max_pages: int = EDITIONS_MAX_PAGES
     ) -> str | None:
@@ -176,24 +194,29 @@ class StorygraphSearcher:
         if not sg_formats_for(media_format):
             return None
         try:
-            for page_num in range(1, max_pages + 1):
-                self._page.goto(
-                    f"{BASE_URL}/books/{book_id}/editions?page={page_num}",
-                    wait_until="domcontentloaded",
-                )
-                try:
-                    self._page.wait_for_selector(EDITIONS_PANE_SELECTOR, timeout=RESULT_TIMEOUT_MS)
-                except Exception:
-                    break
-                records = _extract_records(self._page, EDITIONS_PANE_SELECTOR, _EDITION_EXTRACT_JS)
-                chosen = pick_edition(parse_editions(records), media_format)
+            for editions in self._edition_pages(book_id, max_pages):
+                chosen = pick_edition(editions, media_format)
                 if chosen is not None:
                     return chosen
-                if self._page.query_selector(f"a[href*='editions?page={page_num + 1}']") is None:
-                    break
         except Exception:
             return None
         return None
+
+    def list_editions(self, book_id: str, *, max_pages: int = EDITIONS_MAX_PAGES) -> list[Edition]:
+        """All editions of a work (paged, document order, deduped by id). Best-effort:
+        returns whatever was collected before any scrape failure. Used by the read-only
+        retag report to inspect which edition a book is currently marked on."""
+        seen: set[str] = set()
+        editions: list[Edition] = []
+        try:
+            for page in self._edition_pages(book_id, max_pages):
+                for edition in page:
+                    if edition.book_id not in seen:
+                        seen.add(edition.book_id)
+                        editions.append(edition)
+        except Exception:
+            return editions
+        return editions
 
 
 def search_books(

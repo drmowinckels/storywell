@@ -274,3 +274,38 @@ def test_resolve_edition_degrades_to_none_on_scrape_failure():
     with StorygraphSearcher(page=page) as searcher:
         assert searcher.resolve_edition("work", "audio") is None
     assert len(page.goto_urls) == 1
+
+
+def test_list_editions_returns_all_editions_on_one_page():
+    page = _EditionsPage(
+        {1: [{"id": "a", "format": "Audio"}, {"id": "b", "format": "Paperback"}]}
+    )
+    with StorygraphSearcher(page=page) as searcher:
+        editions = searcher.list_editions("work")
+    assert [(e.book_id, e.format) for e in editions] == [("a", "audio"), ("b", "paperback")]
+    assert len(page.goto_urls) == 1
+
+
+def test_list_editions_pages_and_dedupes_by_id():
+    page = _EditionsPage(
+        {
+            1: [{"id": "a", "format": "Paperback"}, {"id": "b", "format": "Audio"}],
+            2: [{"id": "b", "format": "Audio"}, {"id": "c", "format": "Hardcover"}],
+        }
+    )
+    with StorygraphSearcher(page=page) as searcher:
+        editions = searcher.list_editions("work")
+    assert [e.book_id for e in editions] == ["a", "b", "c"]
+    assert len(page.goto_urls) == 2
+
+
+def test_list_editions_empty_when_no_panes():
+    page = _EditionsPage({})
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.list_editions("work") == []
+
+
+def test_list_editions_degrades_to_collected_on_failure():
+    page = _BoomEditionsPage()
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.list_editions("work") == []
