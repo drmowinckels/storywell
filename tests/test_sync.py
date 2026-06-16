@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 import pytest
 
 from storywell.models import SourceBook
+from storywell.storygraph.editions import Edition
 from storywell.storygraph.matching import (
     Candidate,
     MatchResult,
@@ -14,6 +15,7 @@ from storywell.storygraph.store import SyncStore
 from storywell.storygraph.sync import (
     SyncPlanItem,
     TitleEntry,
+    plan_retag,
     plan_sync,
     query_for,
     resolve_match,
@@ -24,13 +26,14 @@ from storywell.storygraph.sync import (
 )
 
 
-def _book(title, *authors, source_id="A", finished_at=None):
+def _book(title, *authors, source_id="A", finished_at=None, media_format=""):
     return SourceBook(
         source="audible",
         source_id=source_id,
         title=title,
         authors=tuple(authors),
         finished_at=finished_at,
+        media_format=media_format,
     )
 
 
@@ -216,6 +219,76 @@ def test_run_sync_dry_run_plans_without_writing(tmp_path):
     assert writer.calls == []
 
 
+class _FakeEditionResolver:
+    def __init__(self, mapping=None):
+        self.mapping = mapping or {}
+        self.calls = []
+
+    def __call__(self, book_id, media_format):
+        self.calls.append((book_id, media_format))
+        return self.mapping.get(book_id)
+
+
+def test_run_sync_marks_the_audio_edition_for_an_audiobook_source(tmp_path):
+    writer = _FakeWriter()
+    store = _store(tmp_path)
+    resolver = _FakeEditionResolver({"b1": "audio-ed"})
+    outcome = run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1", media_format="audio")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=store,
+        edition_fn=resolver,
+    )
+    assert resolver.calls == [("b1", "audio")]
+    assert writer.calls == [("audio-ed", None)]
+    assert outcome.written == ["audible:A1"]
+    assert store.cached_book_id("audible:A1") == "audio-ed"
+
+
+def test_run_sync_falls_back_to_best_match_when_no_audio_edition(tmp_path):
+    writer = _FakeWriter()
+    resolver = _FakeEditionResolver(mapping={})  # no audio edition for b1
+    run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1", media_format="audio")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=_store(tmp_path),
+        edition_fn=resolver,
+    )
+    assert writer.calls == [("b1", None)]
+
+
+def test_run_sync_skips_edition_resolution_without_media_format(tmp_path):
+    writer = _FakeWriter()
+    resolver = _FakeEditionResolver({"b1": "audio-ed"})
+    run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=_store(tmp_path),
+        edition_fn=resolver,
+    )
+    assert resolver.calls == []
+    assert writer.calls == [("b1", None)]
+
+
+def test_run_sync_does_not_re_resolve_cached_edition(tmp_path):
+    store = _store(tmp_path)
+    store.remember_match("audible:A1", "audio-ed")
+    resolver = _FakeEditionResolver({"audio-ed": "should-not-be-used"})
+    writer = _FakeWriter()
+    run_sync(
+        [_book("X", source_id="A1", media_format="audio")],
+        search_fn=lambda q: [],
+        writer=writer,
+        store=store,
+        edition_fn=resolver,
+    )
+    assert resolver.calls == []
+    assert writer.calls == [("audio-ed", None)]
+
+
 def test_run_sync_records_failure(tmp_path):
     outcome = run_sync(
         [_book("Hyperion", "Dan Simmons", source_id="A1")],
@@ -246,6 +319,24 @@ def test_run_title_sync_skips_already_synced(tmp_path):
     entries = [TitleEntry(key="audible:c::emma", title="Emma", finish_date=date(2020, 1, 1))]
     outcome = run_title_sync(entries, search_fn=lambda q: [], writer=_FakeWriter(), store=store)
     assert outcome.skipped_synced == ["audible:c::emma"]
+
+
+def test_run_title_sync_marks_audio_edition_when_entry_has_format(tmp_path):
+    entries = [
+        TitleEntry(key="audible:c::emma", title="Emma", media_format="audio"),
+    ]
+    writer = _FakeWriter()
+    resolver = _FakeEditionResolver({"b1": "audio-ed"})
+    outcome = run_title_sync(
+        entries,
+        search_fn=lambda q: [Candidate("b1", "Emma", "")],
+        writer=writer,
+        store=_store(tmp_path),
+        edition_fn=resolver,
+    )
+    assert resolver.calls == [("b1", "audio")]
+    assert writer.calls == [("audio-ed", None)]
+    assert outcome.written == ["audible:c::emma"]
 
 
 def test_run_title_sync_no_match(tmp_path):
@@ -315,6 +406,51 @@ def test_run_review_sync_existing_storygraph_review_recorded_as_done(tmp_path):
     outcome = run_review_sync([book], rater=_FakeRater(status="skipped"), store=store)
     assert outcome.skipped_synced == [book.key]
     assert store.is_rated(book.key) is True
+
+
+def _editions_fn(mapping):
+    return lambda book_id: mapping.get(book_id, [])
+
+
+def test_plan_retag_classifies_each_matched_book(tmp_path):
+    store = _store(tmp_path)
+    store.remember_match("audible:A", "pap")  # on paperback, audio exists -> retaggable
+    store.remember_match("audible:B", "aud")  # already on audio
+    store.remember_match("audible:C", "only")  # paperback only -> no audio edition
+    store.remember_match("audible:D", "boom")  # editions unreadable -> unknown
+    books = [
+        _book("A", source_id="A", media_format="audio"),
+        _book("B", source_id="B", media_format="audio"),
+        _book("C", source_id="C", media_format="audio"),
+        _book("D", source_id="D", media_format="audio"),
+    ]
+    editions_fn = _editions_fn(
+        {
+            "pap": [Edition("pap", "paperback"), Edition("aud2", "audio")],
+            "aud": [Edition("aud", "audio"), Edition("pap2", "paperback")],
+            "only": [Edition("only", "paperback")],
+            "boom": [],
+        }
+    )
+    items = {i.key: i for i in plan_retag(books, store=store, editions_fn=editions_fn)}
+    assert items["audible:A"].status == "retaggable"
+    assert items["audible:A"].audio_id == "aud2"
+    assert items["audible:B"].status == "already_audio"
+    assert items["audible:C"].status == "no_audio_edition"
+    assert items["audible:D"].status == "unknown"
+
+
+def test_plan_retag_skips_unmatched_and_non_audio_books(tmp_path):
+    store = _store(tmp_path)
+    store.remember_match("audible:MATCHED", "pap")
+    books = [
+        _book("Unmatched", source_id="UNMATCHED", media_format="audio"),  # no mapping
+        _book("Ebook", source_id="EBK", media_format="ebook"),  # not an audio source
+        _book("Matched", source_id="MATCHED", media_format="audio"),
+    ]
+    editions_fn = _editions_fn({"pap": [Edition("pap", "paperback"), Edition("a", "audio")]})
+    items = plan_retag(books, store=store, editions_fn=editions_fn)
+    assert [i.key for i in items] == ["audible:MATCHED"]
 
 
 class _RaisingWriter:

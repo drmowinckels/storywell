@@ -295,6 +295,7 @@ def sync(
                     writer=client,
                     store=store,
                     confirm_fn=_prompt_ambiguous,
+                    edition_fn=searcher.resolve_edition,
                 )
                 review_outcome = (
                     run_review_sync(books, rater=client, store=store) if ratings else None
@@ -325,6 +326,110 @@ def sync(
         console.print(
             f"{len(outcome.failed)} book(s) failed to write; re-run to retry.", style="red"
         )
+
+
+_RETAG_STYLE = {
+    "retaggable": "yellow",
+    "already_audio": "green",
+    "no_audio_edition": "red",
+    "unknown": "dim",
+}
+
+
+def build_retag_table(items: list, titles: dict[str, str]) -> Table:
+    table = Table(title=f"Audio-edition retag report ({len(items)})", show_lines=False)
+    table.add_column("Title", overflow="fold")
+    table.add_column("Status")
+    table.add_column("Current edition")
+    table.add_column("Audio edition")
+    for item in items:
+        style = _RETAG_STYLE.get(item.status, "white")
+        table.add_row(
+            titles.get(item.key, item.key),
+            f"[{style}]{item.status}[/]",
+            f"{item.current_format or '?'} ({item.current_id})",
+            item.audio_id or "-",
+        )
+    return table
+
+
+@app.command("retag")
+def retag(
+    source: str = SourceOption,
+    threshold: float = ThresholdOption,
+    auth_file: Path | None = AuthFileOption,
+    profile: str | None = ProfileOption,
+    limit: int = typer.Option(
+        0, "--limit", min=0, help="Inspect at most N matched books (0 = all)."
+    ),
+    headless: bool = typer.Option(True, "--headless/--headed"),
+) -> None:
+    """Report which already-synced audiobooks are marked on a non-audio StoryGraph edition.
+
+    Read-only: inspects each matched book's editions and shows whether it is already on the
+    audio edition, could be moved to one, or has no audio edition. Writing the moves is not
+    implemented yet — this is the diagnostic that sizes that work.
+    """
+    from rich.progress import track
+
+    from .config import sync_store_path
+    from .storygraph import (
+        StorygraphBrowser,
+        StorygraphDependencyError,
+        SyncStore,
+        is_authenticated,
+        plan_retag,
+    )
+    from .storygraph.search import StorygraphSearcher
+
+    try:
+        books = _load_finished(source, threshold=threshold, auth_file=auth_file, profile=profile)
+    except SourceError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    store = SyncStore.load(sync_store_path())
+    matched = [book for book in books if store.cached_book_id(book.key) is not None]
+    if limit:
+        matched = matched[:limit]
+    if not matched:
+        console.print(f"No matched {source} books in the sync store yet.", style="yellow")
+        return
+
+    try:
+        if not is_authenticated():
+            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
+            raise typer.Exit(code=1)
+    except StorygraphDependencyError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    titles = {book.key: book.title for book in matched}
+    with StorygraphBrowser(headless=headless) as browser:
+        searcher = StorygraphSearcher(page=browser.page)
+        with searcher:
+            items = plan_retag(
+                track(matched, description="Checking editions"),
+                store=store,
+                editions_fn=searcher.list_editions,
+            )
+
+    console.print(build_retag_table(items, titles))
+    counts: dict[str, int] = {}
+    for item in items:
+        counts[item.status] = counts.get(item.status, 0) + 1
+    console.print(
+        f"retaggable: {counts.get('retaggable', 0)}  "
+        f"already audio: {counts.get('already_audio', 0)}  "
+        f"no audio edition: {counts.get('no_audio_edition', 0)}  "
+        f"unknown: {counts.get('unknown', 0)}",
+        style="cyan",
+    )
+    console.print(
+        f"{counts.get('retaggable', 0)} of {len(items)} matched books are on a non-audio "
+        "edition with an audio edition available to move them to.",
+        style="cyan",
+    )
 
 
 @app.command("collections")
@@ -427,7 +532,12 @@ def collections(
                     if not chosen:
                         continue
                     entries = [
-                        TitleEntry(key=f"{book.key}::{t.lower()}", title=t, finish_date=finish_date)
+                        TitleEntry(
+                            key=f"{book.key}::{t.lower()}",
+                            title=t,
+                            finish_date=finish_date,
+                            media_format=book.media_format,
+                        )
                         for t in chosen
                     ]
                     outcome = run_title_sync(
@@ -436,6 +546,7 @@ def collections(
                         writer=client,
                         store=store,
                         confirm_fn=_prompt_ambiguous,
+                        edition_fn=searcher.resolve_edition,
                     )
                     totals["written"] += len(outcome.written)
                     totals["skipped"] += (

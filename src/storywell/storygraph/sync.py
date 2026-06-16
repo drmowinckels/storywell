@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any, Protocol
 
 from ..models import SourceBook
+from .editions import Edition, pick_edition
 from .matching import Candidate, MatchResult, MatchStatus, match_book, search_title
 from .reviews import compose_review, rating_to_stars
 from .session import StorygraphAuthError
@@ -13,6 +14,8 @@ from .store import SyncStore
 
 SearchFn = Callable[[str], list[Candidate]]
 ConfirmFn = Callable[[Any, MatchResult], "Candidate | None"]
+EditionFn = Callable[[str, str], "str | None"]
+EditionsFn = Callable[[str], list[Edition]]
 
 
 class Writer(Protocol):
@@ -63,8 +66,61 @@ def summarize(items: Iterable[SyncPlanItem]) -> dict[MatchStatus, int]:
     return counts
 
 
+RETAG_FORMAT = "audio"
+
+
+@dataclass(frozen=True)
+class RetagItem:
+    """One already-matched book's audio-edition status, for the read-only retag report."""
+
+    key: str
+    current_id: str
+    current_format: str
+    audio_id: str | None
+
+    @property
+    def status(self) -> str:
+        if not self.current_format and self.audio_id is None:
+            return "unknown"  # could not read the editions page
+        if self.current_format == RETAG_FORMAT:
+            return "already_audio"
+        return "retaggable" if self.audio_id else "no_audio_edition"
+
+
+def plan_retag(
+    books: Iterable[SourceBook], *, store: SyncStore, editions_fn: EditionsFn
+) -> list[RetagItem]:
+    """Report which already-matched audiobook-source books are on a non-audio StoryGraph
+    edition (and whether an audio edition exists to move them to). Read-only: inspects the
+    cached match for each book and the work's editions; never writes."""
+    items: list[RetagItem] = []
+    for book in books:
+        if book.media_format != RETAG_FORMAT:
+            continue
+        current_id = store.cached_book_id(book.key)
+        if current_id is None:
+            continue
+        editions = editions_fn(current_id)
+        current_format = next((e.format for e in editions if e.book_id == current_id), "")
+        items.append(
+            RetagItem(book.key, current_id, current_format, pick_edition(editions, RETAG_FORMAT))
+        )
+    return items
+
+
 def _finish_date(book: SourceBook) -> date | None:
     return book.finished_at.date() if book.finished_at else None
+
+
+def _effective_book_id(book_id: str, media_format: str, edition_fn: EditionFn | None) -> str:
+    """Re-point a matched book to its format-specific edition (e.g. the audiobook one).
+
+    Falls back to the matched ``book_id`` when no edition_fn is wired, the source has no
+    known format, or the work has no edition in that format (best-match fallback)."""
+    if edition_fn is None or not media_format:
+        return book_id
+    edition_id = edition_fn(book_id, media_format)
+    return edition_id if edition_id is not None else book_id
 
 
 def resolve_match(item: Any, result: MatchResult, confirm_fn: ConfirmFn | None) -> Candidate | None:
@@ -82,6 +138,7 @@ def run_sync(
     writer: Writer,
     store: SyncStore,
     confirm_fn: ConfirmFn | None = None,
+    edition_fn: EditionFn | None = None,
     dry_run: bool = False,
 ) -> SyncOutcome:
     outcome = SyncOutcome()
@@ -103,7 +160,7 @@ def run_sync(
                     else:
                         outcome.ambiguous_skipped.append(book.key)
                     continue
-                book_id = chosen.book_id
+                book_id = _effective_book_id(chosen.book_id, book.media_format, edition_fn)
                 store.remember_match(book.key, book_id)
 
             if dry_run:
@@ -129,6 +186,7 @@ class TitleEntry:
     title: str
     finish_date: date | None = None
     author: str = ""
+    media_format: str = ""
 
 
 def run_title_sync(
@@ -138,6 +196,7 @@ def run_title_sync(
     writer: Writer,
     store: SyncStore,
     confirm_fn: ConfirmFn | None = None,
+    edition_fn: EditionFn | None = None,
     dry_run: bool = False,
 ) -> SyncOutcome:
     """Mark a list of plain titles read (used for a collection's contained books).
@@ -163,7 +222,7 @@ def run_title_sync(
                     else:
                         outcome.ambiguous_skipped.append(entry.key)
                     continue
-                book_id = chosen.book_id
+                book_id = _effective_book_id(chosen.book_id, entry.media_format, edition_fn)
                 store.remember_match(entry.key, book_id)
 
             if dry_run:

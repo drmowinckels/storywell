@@ -34,6 +34,9 @@ class _FakeSearcher:
     def search(self, query):
         return [Candidate("b1", "Hyperion", "Dan Simmons")]
 
+    def resolve_edition(self, book_id, media_format, **kwargs):
+        return None
+
 
 class _FakeClient:
     def __init__(self, *args, **kwargs):
@@ -188,6 +191,9 @@ class _AuthSearcher:
 
         raise StorygraphAuthError("StoryGraph session expired mid-run.")
 
+    def resolve_edition(self, book_id, media_format, **kwargs):
+        return None
+
 
 def test_cli_sync_aborts_and_saves_on_session_expiry(monkeypatch, tmp_path):
     monkeypatch.setattr("storywell.cli._load_finished", _one_book)
@@ -244,6 +250,9 @@ class _FakeCollSearcher:
     def fetch_description(self, book_id):
         return "Included are the following: Emma, Persuasion."
 
+    def resolve_edition(self, book_id, media_format, **kwargs):
+        return None
+
 
 def _one_collection(*a, **k):
     return [
@@ -284,3 +293,58 @@ def test_cli_collections_no_dry_run_marks_selected(monkeypatch, tmp_path):
     result = runner.invoke(app, ["collections", "--no-dry-run"], input="1\n\n")
     assert result.exit_code == 0
     assert "written: 1" in result.stdout
+
+
+def _one_audio_book(*a, **k):
+    return [
+        SourceBook(
+            source="audible",
+            source_id="A1",
+            title="Hyperion",
+            authors=("Dan Simmons",),
+            media_format="audio",
+        )
+    ]
+
+
+class _FakeRetagSearcher:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def list_editions(self, book_id, **kwargs):
+        from storywell.storygraph.editions import Edition
+
+        return [Edition("pap", "paperback"), Edition("aud", "audio")]
+
+
+def _seed_store(path, mappings):
+    import json
+
+    path.write_text(json.dumps({"mappings": mappings, "synced": {}, "rated": {}}))
+
+
+def test_cli_retag_reports_retaggable(monkeypatch, tmp_path):
+    _seed_store(tmp_path / "store.json", {"audible:A1": "pap"})
+    monkeypatch.setattr("storywell.cli._load_finished", _one_audio_book)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
+    monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeRetagSearcher)
+    monkeypatch.setattr("storywell.config.sync_store_path", lambda: tmp_path / "store.json")
+    result = runner.invoke(app, ["retag"])
+    assert result.exit_code == 0
+    assert "retaggable: 1" in result.stdout
+
+
+def test_cli_retag_no_matched_books(monkeypatch, tmp_path):
+    _seed_store(tmp_path / "store.json", {})  # nothing matched yet
+    monkeypatch.setattr("storywell.cli._load_finished", _one_audio_book)
+    monkeypatch.setattr("storywell.config.sync_store_path", lambda: tmp_path / "store.json")
+    result = runner.invoke(app, ["retag"])
+    assert result.exit_code == 0
+    assert "No matched" in result.stdout

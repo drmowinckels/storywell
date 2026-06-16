@@ -182,6 +182,142 @@ def test_fetch_description_returns_text():
     assert any("/books/b1" in u for u in page.goto_urls)
 
 
+class _EditionEl:
+    def __init__(self, record):
+        self._record = record
+
+    def evaluate(self, _js):
+        return self._record
+
+
+class _EditionsPage:
+    def __init__(self, pages):
+        self._pages = pages
+        self._current = []
+        self.goto_urls = []
+
+    def goto(self, url, **kwargs):
+        self.goto_urls.append(url)
+        import re
+
+        match = re.search(r"page=(\d+)", url)
+        self._current = self._pages.get(int(match.group(1)) if match else 1, [])
+
+    def wait_for_selector(self, selector, timeout=None):
+        if not self._current:
+            raise TimeoutError("no editions")
+        return object()
+
+    def query_selector_all(self, _selector):
+        return [_EditionEl(r) for r in self._current]
+
+    def query_selector(self, selector):
+        import re
+
+        match = re.search(r"page=(\d+)", selector)
+        return object() if match and int(match.group(1)) in self._pages else None
+
+
+def test_resolve_edition_returns_audio_edition_on_first_page():
+    page = _EditionsPage(
+        {1: [{"id": "paper", "format": "Paperback"}, {"id": "audio1", "format": "Audio"}]}
+    )
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "audio") == "audio1"
+    assert page.goto_urls == ["https://app.thestorygraph.com/books/work/editions?page=1"]
+
+
+def test_resolve_edition_pages_until_it_finds_audio():
+    page = _EditionsPage(
+        {
+            1: [{"id": "paper", "format": "Paperback"}],
+            2: [{"id": "audio2", "format": "Audio"}],
+        }
+    )
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "audio") == "audio2"
+    assert len(page.goto_urls) == 2
+
+
+def test_resolve_edition_none_when_no_audio_edition_exists():
+    page = _EditionsPage({1: [{"id": "paper", "format": "Paperback"}]})
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "audio") is None
+
+
+def test_resolve_edition_skips_browser_for_unknown_format():
+    page = _EditionsPage({1: [{"id": "audio1", "format": "Audio"}]})
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "") is None
+    assert page.goto_urls == []
+
+
+def test_resolve_edition_respects_max_pages():
+    page = _EditionsPage(
+        {n: [{"id": "paper", "format": "Paperback"}] for n in range(1, 5)}
+        | {5: [{"id": "late", "format": "Audio"}]}
+    )
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "audio", max_pages=3) is None
+    assert len(page.goto_urls) == 3
+
+
+def test_resolve_edition_stops_when_no_next_page_link():
+    page = _EditionsPage({1: [{"id": "paper", "format": "Paperback"}]})  # single page, no audio
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "audio", max_pages=3) is None
+    assert len(page.goto_urls) == 1  # did not load empty trailing pages
+
+
+class _BoomEditionsPage:
+    def __init__(self):
+        self.goto_urls = []
+
+    def goto(self, url, **kwargs):
+        self.goto_urls.append(url)
+        raise RuntimeError("navigation failed")
+
+
+def test_resolve_edition_degrades_to_none_on_scrape_failure():
+    page = _BoomEditionsPage()
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.resolve_edition("work", "audio") is None
+    assert len(page.goto_urls) == 1
+
+
+def test_list_editions_returns_all_editions_on_one_page():
+    page = _EditionsPage({1: [{"id": "a", "format": "Audio"}, {"id": "b", "format": "Paperback"}]})
+    with StorygraphSearcher(page=page) as searcher:
+        editions = searcher.list_editions("work")
+    assert [(e.book_id, e.format) for e in editions] == [("a", "audio"), ("b", "paperback")]
+    assert len(page.goto_urls) == 1
+
+
+def test_list_editions_pages_and_dedupes_by_id():
+    page = _EditionsPage(
+        {
+            1: [{"id": "a", "format": "Paperback"}, {"id": "b", "format": "Audio"}],
+            2: [{"id": "b", "format": "Audio"}, {"id": "c", "format": "Hardcover"}],
+        }
+    )
+    with StorygraphSearcher(page=page) as searcher:
+        editions = searcher.list_editions("work")
+    assert [e.book_id for e in editions] == ["a", "b", "c"]
+    assert len(page.goto_urls) == 2
+
+
+def test_list_editions_empty_when_no_panes():
+    page = _EditionsPage({})
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.list_editions("work") == []
+
+
+def test_list_editions_degrades_to_collected_on_failure():
+    page = _BoomEditionsPage()
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.list_editions("work") == []
+
+
 def test_search_returns_empty_when_no_results(tmp_path):
     page = _FakePage([])  # wait_for_selector times out -> no candidates
     with StorygraphSearcher(page=page) as searcher:

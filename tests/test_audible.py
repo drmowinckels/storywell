@@ -38,6 +38,10 @@ def test_parse_review_none_when_empty():
     assert parse_review({"provided_review": {"body": "   "}}) is None
 
 
+def test_item_to_book_tags_audio_format():
+    assert item_to_book({"asin": "A", "title": "Anything"}).media_format == "audio"
+
+
 def test_item_to_book_carries_rating_and_review():
     item = {
         "asin": "A",

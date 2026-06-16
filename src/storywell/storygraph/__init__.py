@@ -8,9 +8,11 @@ from .session import (
 )
 from .store import SyncStore
 from .sync import (
+    RetagItem,
     SyncOutcome,
     SyncPlanItem,
     TitleEntry,
+    plan_retag,
     plan_sync,
     query_for,
     resolve_match,
@@ -24,6 +26,7 @@ __all__ = [
     "Candidate",
     "MatchResult",
     "MatchStatus",
+    "RetagItem",
     "StorygraphAuthError",
     "StorygraphBrowser",
     "StorygraphDependencyError",
@@ -34,6 +37,7 @@ __all__ = [
     "is_authenticated",
     "login",
     "match_book",
+    "plan_retag",
     "plan_sync",
     "query_for",
     "resolve_match",

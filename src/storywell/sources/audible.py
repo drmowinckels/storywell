@@ -23,6 +23,7 @@ from ..models import SourceBook
 from .base import SourceError
 
 SOURCE_NAME = "audible"
+SOURCE_FORMAT = "audio"
 
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc,product_attrs,contributors,is_finished,percent_complete,relationships"
@@ -195,6 +196,7 @@ def item_to_book(item: dict[str, Any]) -> SourceBook:
         is_collection=is_collection(item),
         rating=parse_rating(item),
         review=parse_review(item),
+        media_format=SOURCE_FORMAT,
     )
 
 
@@ -254,6 +256,7 @@ class AudibleSource:
     """Reports finished audiobooks from an Audible library via ``audible-cli`` auth."""
 
     name = SOURCE_NAME
+    media_format = SOURCE_FORMAT
 
     def __init__(self, *, auth_file: Path | None = None, profile: str | None = None):
         self.auth_file = auth_file
