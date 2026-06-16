@@ -114,12 +114,22 @@ def is_authenticated(
     *,
     playwright_factory: PlaywrightFactory | None = None,
     headless: bool = True,
+    page: Any = None,
 ) -> bool:
     """Return True if the saved session still has an authenticated StoryGraph login.
 
     Logged-out visits to the app root redirect to ``/users/sign_in``; staying anywhere
     else means the session is live.
+
+    Pass an existing authenticated ``page`` to run the check on the already-open
+    session browser. Otherwise a throwaway browser is launched — avoid that when a
+    session browser is already open, since Playwright's sync API forbids a second
+    concurrent context.
     """
+    if page is not None:
+        page.goto(BASE_URL)
+        return _is_signed_in(page.url)
+
     state_path = state_path or storygraph_state_path()
     if not Path(state_path).exists():
         return False

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -80,6 +82,34 @@ def _load_finished(
 ) -> list[SourceBook]:
     src = make_source(source, auth_file=auth_file, profile=profile)
     return src.finished_books(threshold=threshold)
+
+
+@contextlib.contextmanager
+def _session_browser(*, headless: bool) -> Iterator:
+    """Open one authenticated StoryGraph browser, or exit with a clear message.
+
+    Checks the session on the shared page rather than launching a throwaway
+    browser first: Playwright's sync API forbids a second concurrent context, so
+    the old pre-flight ``is_authenticated()`` launch both wasted a cold start and
+    risked colliding with the work browser.
+    """
+    from .storygraph import (
+        StorygraphBrowser,
+        StorygraphDependencyError,
+        is_authenticated,
+    )
+
+    try:
+        browser_cm = StorygraphBrowser(headless=headless)
+    except StorygraphDependencyError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    with browser_cm as browser:
+        if not is_authenticated(page=browser.page):
+            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
+            raise typer.Exit(code=1)
+        yield browser
 
 
 def build_table(books: list[SourceBook], *, source: str) -> Table:
@@ -231,10 +261,7 @@ def sync(
     from .storygraph import (
         MatchStatus,
         StorygraphAuthError,
-        StorygraphBrowser,
-        StorygraphDependencyError,
         SyncStore,
-        is_authenticated,
         plan_sync,
         run_review_sync,
         run_sync,
@@ -256,18 +283,12 @@ def sync(
     if limit:
         books = books[:limit]
 
-    try:
-        if not is_authenticated():
-            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
-            raise typer.Exit(code=1)
-    except StorygraphDependencyError as err:
-        console.print(str(err), style="red")
-        raise typer.Exit(code=1) from err
-
     if dry_run:
         try:
-            with StorygraphSearcher(headless=headless) as searcher:
-                items = plan_sync(books, searcher.search)
+            with _session_browser(headless=headless) as browser:
+                searcher = StorygraphSearcher(page=browser.page)
+                with searcher:
+                    items = plan_sync(books, searcher.search)
         except StorygraphAuthError as err:
             console.print(str(err), style="red")
             raise typer.Exit(code=1) from err
@@ -285,7 +306,7 @@ def sync(
     outcome = None
     review_outcome = None
     try:
-        with StorygraphBrowser(headless=headless) as browser:
+        with _session_browser(headless=headless) as browser:
             searcher = StorygraphSearcher(page=browser.page)
             client = StorygraphClient(page=browser.page)
             with searcher, client:
@@ -449,14 +470,7 @@ def collections(
     --no-dry-run prompts you to pick which to mark read (with the collection's finish date).
     """
     from .config import sync_store_path
-    from .storygraph import (
-        StorygraphAuthError,
-        StorygraphBrowser,
-        StorygraphDependencyError,
-        SyncStore,
-        is_authenticated,
-        run_title_sync,
-    )
+    from .storygraph import StorygraphAuthError, SyncStore, run_title_sync
     from .storygraph.client import StorygraphClient
     from .storygraph.collections import proposed_titles, select_titles
     from .storygraph.matching import search_title
@@ -474,17 +488,10 @@ def collections(
         console.print(f"No finished collections found from {source}.", style="yellow")
         return
 
-    try:
-        if not is_authenticated():
-            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
-            raise typer.Exit(code=1)
-    except StorygraphDependencyError as err:
-        console.print(str(err), style="red")
-        raise typer.Exit(code=1) from err
-
     if dry_run:
         try:
-            with StorygraphSearcher(headless=headless) as searcher:
+            with _session_browser(headless=headless) as browser:
+                searcher = StorygraphSearcher(page=browser.page)
                 for book in found:
                     candidates = searcher.search(search_title(book.title))
                     best = candidates[0] if candidates else None
@@ -509,7 +516,7 @@ def collections(
     store = SyncStore.load(sync_store_path())
     totals = {"written": 0, "skipped": 0, "failed": 0}
     try:
-        with StorygraphBrowser(headless=headless) as browser:
+        with _session_browser(headless=headless) as browser:
             searcher = StorygraphSearcher(page=browser.page)
             client = StorygraphClient(page=browser.page)
             with searcher, client:
