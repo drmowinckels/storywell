@@ -173,6 +173,15 @@ def test_is_authenticated_false_when_redirected_to_sign_in(tmp_path):
     assert factory.browser.closed is True
 
 
+def test_is_authenticated_with_page_checks_without_launching():
+    live = _FakePage(url="https://app.thestorygraph.com/")
+    assert is_authenticated(page=live) is True
+    assert live.goto_urls == ["https://app.thestorygraph.com"]
+
+    signed_out = _FakePage(url="https://app.thestorygraph.com/users/sign_in")
+    assert is_authenticated(page=signed_out) is False
+
+
 def test_is_authenticated_loads_storage_state_into_context(tmp_path):
     state = tmp_path / "state.json"
     state.write_text("{}")

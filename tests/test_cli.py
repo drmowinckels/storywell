@@ -147,14 +147,14 @@ def test_cli_storygraph_login_dependency_error(monkeypatch):
 
 
 def test_cli_storygraph_status_active(monkeypatch):
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: True)
     result = runner.invoke(app, ["storygraph-status"])
     assert result.exit_code == 0
     assert "active" in result.stdout.lower()
 
 
 def test_cli_storygraph_status_inactive(monkeypatch):
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: False)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: False)
     result = runner.invoke(app, ["storygraph-status"])
     assert result.exit_code == 1
     assert "storygraph-login" in result.stdout
@@ -162,7 +162,7 @@ def test_cli_storygraph_status_inactive(monkeypatch):
 
 def test_cli_sync_writes_matches(monkeypatch, tmp_path):
     monkeypatch.setattr("storywell.cli._load_finished", _one_book)
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: True)
     monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
     monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeSearcher)
     monkeypatch.setattr("storywell.storygraph.client.StorygraphClient", _FakeClient)
@@ -191,7 +191,7 @@ class _AuthSearcher:
 
 def test_cli_sync_aborts_and_saves_on_session_expiry(monkeypatch, tmp_path):
     monkeypatch.setattr("storywell.cli._load_finished", _one_book)
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: True)
     monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
     monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _AuthSearcher)
     monkeypatch.setattr("storywell.storygraph.client.StorygraphClient", _FakeClient)
@@ -211,7 +211,8 @@ def test_cli_sync_no_finished_books(monkeypatch):
 
 def test_cli_sync_requires_session(monkeypatch):
     monkeypatch.setattr("storywell.cli._load_finished", _one_book)
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: False)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: False)
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 1
     assert "storygraph-login" in result.stdout
@@ -219,11 +220,25 @@ def test_cli_sync_requires_session(monkeypatch):
 
 def test_cli_sync_dry_run_reports_matches(monkeypatch):
     monkeypatch.setattr("storywell.cli._load_finished", _one_book)
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: True)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
     monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeSearcher)
     result = runner.invoke(app, ["sync", "--dry-run"])
     assert result.exit_code == 0
     assert "match:" in result.stdout.lower()
+
+
+def test_cli_sync_reports_missing_playwright(monkeypatch):
+    def boom(*a, **k):
+        from storywell.storygraph import StorygraphDependencyError
+
+        raise StorygraphDependencyError("install playwright first")
+
+    monkeypatch.setattr("storywell.cli._load_finished", _one_book)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", boom)
+    result = runner.invoke(app, ["sync", "--dry-run"])
+    assert result.exit_code == 1
+    assert "install playwright first" in result.stdout
 
 
 class _FakeCollSearcher:
@@ -266,7 +281,8 @@ def test_cli_collections_none_found(monkeypatch):
 
 def test_cli_collections_dry_run_lists_titles(monkeypatch):
     monkeypatch.setattr("storywell.cli._load_finished", _one_collection)
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: True)
+    monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
     monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeCollSearcher)
     result = runner.invoke(app, ["collections"])
     assert result.exit_code == 0
@@ -276,7 +292,7 @@ def test_cli_collections_dry_run_lists_titles(monkeypatch):
 
 def test_cli_collections_no_dry_run_marks_selected(monkeypatch, tmp_path):
     monkeypatch.setattr("storywell.cli._load_finished", _one_collection)
-    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda: True)
+    monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: True)
     monkeypatch.setattr("storywell.storygraph.StorygraphBrowser", _FakeBrowser)
     monkeypatch.setattr("storywell.storygraph.search.StorygraphSearcher", _FakeCollSearcher)
     monkeypatch.setattr("storywell.storygraph.client.StorygraphClient", _FakeClient)
