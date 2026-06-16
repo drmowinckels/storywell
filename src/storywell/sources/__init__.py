@@ -5,11 +5,13 @@ import inspect
 from .audible import AudibleSource
 from .base import Source, SourceError
 from .goodreads import GoodreadsSource
+from .hardcover import HardcoverSource
 from .librarything import LibraryThingSource
 
 SOURCES: dict[str, type[Source]] = {
     AudibleSource.name: AudibleSource,
     GoodreadsSource.name: GoodreadsSource,
+    HardcoverSource.name: HardcoverSource,
     LibraryThingSource.name: LibraryThingSource,
 }
 
@@ -39,6 +41,7 @@ __all__ = [
     "SOURCES",
     "AudibleSource",
     "GoodreadsSource",
+    "HardcoverSource",
     "LibraryThingSource",
     "Source",
     "SourceError",
