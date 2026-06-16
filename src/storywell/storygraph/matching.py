@@ -171,3 +171,30 @@ def classify(scored: list[ScoredCandidate]) -> MatchResult:
 def match_book(title: str, author: str, candidates: list[Candidate]) -> MatchResult:
     scored = [score_candidate(title, author, c) for c in candidates]
     return classify(scored)
+
+
+_ISBN_SEP = re.compile(r"[\s-]+")
+
+
+def normalize_isbn(value: str | None) -> str | None:
+    """Strip hyphens/spaces (and any leftover whitespace) from an ISBN, or None if empty."""
+    if not value:
+        return None
+    cleaned = _ISBN_SEP.sub("", value).strip()
+    return cleaned or None
+
+
+def is_isbn(value: str | None) -> bool:
+    """True for a well-formed ISBN-10 or ISBN-13 (length + digits; ISBN-10 allows a trailing X).
+
+    A format check only — it does not validate the check digit. Enough to decide whether a
+    string is worth handing to StoryGraph search as an identifier rather than free text.
+    """
+    cleaned = normalize_isbn(value)
+    if not cleaned:
+        return False
+    if len(cleaned) == 13:
+        return cleaned.isdigit()
+    if len(cleaned) == 10:
+        return cleaned[:9].isdigit() and (cleaned[9].isdigit() or cleaned[9] in "Xx")
+    return False

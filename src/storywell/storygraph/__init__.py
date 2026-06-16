@@ -1,4 +1,4 @@
-from .matching import Candidate, MatchResult, MatchStatus, match_book
+from .matching import Candidate, MatchResult, MatchStatus, is_isbn, match_book
 from .session import (
     StorygraphAuthError,
     StorygraphBrowser,
@@ -12,6 +12,8 @@ from .sync import (
     SyncOutcome,
     SyncPlanItem,
     TitleEntry,
+    isbn_query,
+    match_for_book,
     plan_retag,
     plan_sync,
     query_for,
@@ -35,8 +37,11 @@ __all__ = [
     "SyncStore",
     "TitleEntry",
     "is_authenticated",
+    "is_isbn",
+    "isbn_query",
     "login",
     "match_book",
+    "match_for_book",
     "plan_retag",
     "plan_sync",
     "query_for",
