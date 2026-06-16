@@ -1,5 +1,7 @@
 from datetime import UTC, date, datetime
 
+import pytest
+
 from storywell.models import SourceBook
 from storywell.storygraph.matching import (
     Candidate,
@@ -7,6 +9,7 @@ from storywell.storygraph.matching import (
     MatchStatus,
     ScoredCandidate,
 )
+from storywell.storygraph.session import StorygraphAuthError
 from storywell.storygraph.store import SyncStore
 from storywell.storygraph.sync import (
     SyncPlanItem,
@@ -312,3 +315,126 @@ def test_run_review_sync_existing_storygraph_review_recorded_as_done(tmp_path):
     outcome = run_review_sync([book], rater=_FakeRater(status="skipped"), store=store)
     assert outcome.skipped_synced == [book.key]
     assert store.is_rated(book.key) is True
+
+
+class _RaisingWriter:
+    def __init__(self, exc):
+        self.exc = exc
+        self.calls = 0
+
+    def mark_finished(self, book_id, finish_date=None):
+        self.calls += 1
+        raise self.exc
+
+
+def test_run_sync_one_book_failure_does_not_abort_batch(tmp_path):
+    books = [
+        _book("Boom", "X", source_id="A1"),
+        _book("Hyperion", "Dan Simmons", source_id="A2"),
+    ]
+
+    class _FlakyWriter:
+        def __init__(self):
+            self.calls = []
+
+        def mark_finished(self, book_id, finish_date=None):
+            self.calls.append(book_id)
+            if book_id == "boom":
+                raise RuntimeError("transient browser error")
+            return True
+
+    def search(query):
+        if query.startswith("Boom"):
+            return [Candidate("boom", "Boom", "X")]
+        return [Candidate("b2", "Hyperion", "Dan Simmons")]
+
+    store = _store(tmp_path)
+    outcome = run_sync(books, search_fn=search, writer=_FlakyWriter(), store=store)
+    assert outcome.failed == ["audible:A1"]
+    assert outcome.written == ["audible:A2"]
+    assert store.is_synced("audible:A2", None) is True
+
+
+def test_run_sync_reraises_auth_error(tmp_path):
+    writer = _RaisingWriter(StorygraphAuthError("session expired"))
+    with pytest.raises(StorygraphAuthError):
+        run_sync(
+            [_book("Hyperion", "Dan Simmons", source_id="A1")],
+            search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+            writer=writer,
+            store=_store(tmp_path),
+        )
+
+
+def test_run_review_sync_one_book_failure_does_not_abort_batch(tmp_path):
+    store = _store(tmp_path)
+    good, bad = _rated_book(source_id="A1"), _rated_book(source_id="A2")
+    store.remember_match(good.key, "sg1")
+    store.remember_match(bad.key, "sg2")
+
+    class _FlakyRater:
+        def write_review(self, book_id, *, stars_integer, stars_decimal, explanation):
+            if book_id == "sg2":
+                raise RuntimeError("transient")
+            return "written"
+
+    outcome = run_review_sync([good, bad], rater=_FlakyRater(), store=store)
+    assert outcome.written == [good.key]
+    assert outcome.failed == [bad.key]
+
+
+def test_run_review_sync_reraises_auth_error(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book()
+    store.remember_match(book.key, "sg1")
+
+    class _AuthRater:
+        def write_review(self, book_id, *, stars_integer, stars_decimal, explanation):
+            raise StorygraphAuthError("session expired")
+
+    with pytest.raises(StorygraphAuthError):
+        run_review_sync([book], rater=_AuthRater(), store=store)
+
+
+def test_run_review_sync_records_failed_status(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book()
+    store.remember_match(book.key, "sg1")
+    outcome = run_review_sync([book], rater=_FakeRater(status="failed"), store=store)
+    assert outcome.failed == [book.key]
+    assert store.is_rated(book.key) is False
+
+
+def test_run_title_sync_one_book_failure_does_not_abort_batch(tmp_path):
+    entries = [
+        TitleEntry(key="audible:c::boom", title="Boom"),
+        TitleEntry(key="audible:c::emma", title="Emma"),
+    ]
+
+    class _FlakyWriter:
+        def mark_finished(self, book_id, finish_date=None):
+            if book_id == "boom":
+                raise RuntimeError("transient")
+            return True
+
+    def search(query):
+        if query.startswith("Boom"):
+            return [Candidate("boom", "Boom", "")]
+        return [Candidate("emma", "Emma", "")]
+
+    outcome = run_title_sync(
+        entries, search_fn=search, writer=_FlakyWriter(), store=_store(tmp_path)
+    )
+    assert outcome.failed == ["audible:c::boom"]
+    assert outcome.written == ["audible:c::emma"]
+
+
+def test_run_title_sync_reraises_auth_error(tmp_path):
+    writer = _RaisingWriter(StorygraphAuthError("session expired"))
+    with pytest.raises(StorygraphAuthError):
+        run_title_sync(
+            [TitleEntry(key="audible:c::emma", title="Emma")],
+            search_fn=lambda q: [Candidate("emma", "Emma", "")],
+            writer=writer,
+            store=_store(tmp_path),
+        )

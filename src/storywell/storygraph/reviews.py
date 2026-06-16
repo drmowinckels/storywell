@@ -13,9 +13,16 @@ _DECIMAL = {0: "", 25: "25", 50: "5", 75: "75"}
 
 
 def rating_to_stars(rating: float) -> tuple[str, str]:
-    """Split a 0-5 rating into StoryGraph's (stars_integer, stars_decimal) form."""
-    integer = int(rating)
-    fraction = round((rating - integer) * 100)
+    """Split a rating into StoryGraph's (stars_integer, stars_decimal) form.
+
+    Clamped to 0-5 and snapped to the nearest quarter star, so an off-grid source
+    rating (e.g. 3.7) maps to a value StoryGraph's selects actually offer (3.75)
+    instead of silently dropping the fraction or failing select_option.
+    """
+    rating = max(0.0, min(5.0, rating))
+    quarters = round(rating * 4) / 4
+    integer = int(quarters)
+    fraction = round((quarters - integer) * 100)
     return str(integer), _DECIMAL.get(fraction, "")
 
 

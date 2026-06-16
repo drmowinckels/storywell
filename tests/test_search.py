@@ -1,9 +1,12 @@
+import pytest
+
 from storywell.storygraph import search
 from storywell.storygraph.search import (
     StorygraphSearcher,
     _candidates_from_records,
     parse_book_id,
 )
+from storywell.storygraph.session import StorygraphAuthError
 
 
 def test_parse_book_id_extracts_slug():
@@ -40,12 +43,15 @@ class _FakeElement:
 
 
 class _FakePage:
-    def __init__(self, records):
+    def __init__(self, records, redirect_to=None):
         self._records = records
+        self._redirect_to = redirect_to
         self.goto_urls = []
+        self.url = ""
 
     def goto(self, url, **kwargs):
         self.goto_urls.append(url)
+        self.url = self._redirect_to or url
 
     def wait_for_selector(self, selector, timeout=None):
         if not self._records:
@@ -148,12 +154,15 @@ def test_search_books_single_shot(tmp_path):
 
 
 class _DescPage:
-    def __init__(self, text):
+    def __init__(self, text, redirect_to=None):
         self._text = text
+        self._redirect_to = redirect_to
         self.goto_urls = []
+        self.url = ""
 
     def goto(self, url, **kwargs):
         self.goto_urls.append(url)
+        self.url = self._redirect_to or url
 
     def wait_for_selector(self, selector, timeout=None):
         return object()
@@ -171,3 +180,32 @@ def test_fetch_description_returns_text():
         desc = searcher.fetch_description("b1")
     assert "Included are the following" in desc
     assert any("/books/b1" in u for u in page.goto_urls)
+
+
+def test_search_returns_empty_when_no_results(tmp_path):
+    page = _FakePage([])  # wait_for_selector times out -> no candidates
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.search("nothing here") == []
+
+
+def test_search_raises_when_session_expired():
+    page = _FakePage(
+        [{"href": "/books/b1", "title": "T", "author": "A"}],
+        redirect_to="https://app.thestorygraph.com/users/sign_in",
+    )
+    with StorygraphSearcher(page=page) as searcher, pytest.raises(StorygraphAuthError):
+        searcher.search("anything")
+
+
+def test_search_caps_at_max_results():
+    records = [{"href": f"/books/b{n}", "title": f"T{n}", "author": ""} for n in range(10)]
+    page = _FakePage(records)
+    with StorygraphSearcher(page=page, max_results=3) as searcher:
+        results = searcher.search("q")
+    assert [c.book_id for c in results] == ["b0", "b1", "b2"]
+
+
+def test_fetch_description_raises_when_session_expired():
+    page = _DescPage("desc", redirect_to="https://app.thestorygraph.com/users/sign_in")
+    with StorygraphSearcher(page=page) as searcher, pytest.raises(StorygraphAuthError):
+        searcher.fetch_description("b1")
