@@ -4,8 +4,9 @@ description: "Every Storywell command and flag, with examples."
 ---
 
 The general shape is `storywell <command> [options]`. Most commands take a `--source` (default
-`audible`) and the options that source needs. Run `storywell --help` or `storywell <command> --help`
-at any time.
+`audible`) and the options that source needs. Run `storywell --help` (or `-h`) — and likewise
+`storywell <command> -h` — for an inline reference at any time, or `storywell --version` (`-V`) to
+print the installed version.
 
 ## Commands
 
@@ -99,7 +100,8 @@ storywell storygraph-status
 | `--limit` | sync, retag | `0` (all) | Process at most N books. |
 | `--ratings` / `--no-ratings` | sync | on | Also sync your rating + review (with a narrator note). |
 | `--headless` / `--headed` | sync, collections, retag | headless | Run the browser hidden, or `--headed` to watch/debug. |
-| `--version` | root | — | Print version and exit. |
+| `--version`, `-V` | root | — | Print version and exit. |
+| `--help`, `-h` | root + every command | — | Show help for the app or a command and exit. |
 
 ## Next
 

@@ -118,7 +118,7 @@ def test_cli_short_help_flag():
     result = runner.invoke(app, ["-h"])
     assert result.exit_code == 0
     assert "Usage" in result.stdout
-    assert "--version" in result.stdout
+    assert result.stdout == runner.invoke(app, ["--help"]).stdout
 
 
 def test_cli_short_help_flag_on_subcommand():
