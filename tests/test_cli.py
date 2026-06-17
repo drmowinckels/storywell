@@ -108,6 +108,25 @@ def test_cli_version():
     assert "storywell" in result.stdout
 
 
+def test_cli_version_short_flag():
+    result = runner.invoke(app, ["-V"])
+    assert result.exit_code == 0
+    assert "storywell" in result.stdout
+
+
+def test_cli_short_help_flag():
+    result = runner.invoke(app, ["-h"])
+    assert result.exit_code == 0
+    assert "Usage" in result.stdout
+    assert result.stdout == runner.invoke(app, ["--help"]).stdout
+
+
+def test_cli_short_help_flag_on_subcommand():
+    result = runner.invoke(app, ["sync", "-h"])
+    assert result.exit_code == 0
+    assert "Usage" in result.stdout
+
+
 def test_cli_sources_lists_audible():
     result = runner.invoke(app, ["sources"])
     assert result.exit_code == 0

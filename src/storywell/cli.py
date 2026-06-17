@@ -28,6 +28,7 @@ app = typer.Typer(
     add_completion=False,
     help="Sync finished books from Audible, Goodreads & more into The StoryGraph.",
     no_args_is_help=True,
+    context_settings={"help_option_names": ["-h", "--help"]},
 )
 console = Console()
 
@@ -96,6 +97,7 @@ def _root(
     version: bool = typer.Option(
         False,
         "--version",
+        "-V",
         callback=_version_callback,
         is_eager=True,
         help="Print version and exit.",

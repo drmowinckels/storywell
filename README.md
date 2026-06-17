@@ -82,6 +82,7 @@ Common options:
 - `--dry-run` (sync) / `--no-dry-run` (collections) — preview vs write.
 - `--limit N`, `--no-ratings`, `--headed` — process at most N books, skip ratings/reviews, or watch
   the browser work.
+- `--help, -h` — show help for the app or any command; `--version, -V` — print the installed version.
 
 `sync` writes high-confidence matches directly, prompts you on ambiguous ones, and is idempotent: a
 book is only (re)written if its finish date changed. Matches are keyed by `source:id`, so multiple
