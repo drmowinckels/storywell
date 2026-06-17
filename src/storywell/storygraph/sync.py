@@ -282,10 +282,14 @@ def run_review_sync(
     narrator_note: bool = True,
     dry_run: bool = False,
 ) -> SyncOutcome:
-    """Write each book's rating + review (with a narrator note) to its matched
-    StoryGraph book. Requires the book to already be matched (mark-read pass populates
-    the store mapping). Idempotent via the store's ``rated`` set; an existing StoryGraph
-    review is left untouched (the writer reports 'skipped')."""
+    """Write each book's rating + review to its matched StoryGraph book. Requires the
+    book to already be matched (mark-read pass populates the store mapping). Idempotent
+    via the store's ``rated`` set; an existing StoryGraph review is left untouched (the
+    writer reports 'skipped').
+
+    Only books the listener actually rated or reviewed are posted. The narrator note is
+    appended to those, but a narrator note alone never triggers a post — we don't publish
+    a public review for a book the listener never rated or reviewed."""
     outcome = SyncOutcome()
     for book in books:
         try:
@@ -300,10 +304,11 @@ def run_review_sync(
             stars_integer, stars_decimal = ("", "")
             if book.rating:
                 stars_integer, stars_decimal = rating_to_stars(book.rating)
+            has_written_review = bool(book.review and book.review.strip())
+            if not stars_integer and not has_written_review:
+                continue
             narrators = book.narrators if narrator_note else ()
             explanation = compose_review(book.review, narrators) or ""
-            if not stars_integer and not explanation:
-                continue
 
             if dry_run:
                 outcome.planned.append(book.key)

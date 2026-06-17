@@ -197,6 +197,17 @@ def test_filter_finished_skips_items_without_asin():
     assert [b.source_id for b in filter_finished(items)] == ["A2"]
 
 
+def test_item_to_book_returns_none_without_an_asin():
+    assert item_to_book({"title": "No ASIN"}) is None
+    assert item_to_book({"asin": "", "title": "Blank ASIN"}) is None
+
+
+def test_item_to_book_coerces_a_null_title_to_empty_string():
+    book = item_to_book({"asin": "A1", "title": None})
+    assert book is not None
+    assert book.title == ""
+
+
 def test_locate_auth_file_prefers_explicit_path(tmp_path):
     explicit = tmp_path / "creds.json"
     explicit.write_text("{}")
