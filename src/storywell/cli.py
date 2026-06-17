@@ -1,17 +1,20 @@
 from __future__ import annotations
 
 import contextlib
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import typer
+from rich.columns import Columns
 from rich.console import Console
 from rich.table import Table
 
 from . import __version__
 from .models import SourceBook
 from .sources import SourceError, available_sources, make_source
+from .stats import compute_all, load_export
 
 if TYPE_CHECKING:
     from .storygraph import SyncPlanItem
@@ -233,6 +236,100 @@ def list_books(
         return
 
     console.print(build_table(books, source=source))
+
+
+StatsFileOption = typer.Option(
+    ...,
+    "--file",
+    "-f",
+    exists=True,
+    dir_okay=False,
+    readable=True,
+    help="Path to your StoryGraph library CSV export "
+    "(Account → Manage Account → Export StoryGraph Library).",
+)
+
+
+def _pairs_table(
+    title: str, label_header: str, pairs: list, *, value_header: str = "Count"
+) -> Table:
+    table = Table(title=title, show_lines=False, title_justify="left")
+    table.add_column(label_header, overflow="fold")
+    table.add_column(value_header, justify="right")
+    for label, value in pairs:
+        table.add_row(str(label), str(value))
+    return table
+
+
+def render_stats_summary(data: dict) -> None:
+    """Print a Rich summary of a computed stats blob. Pure formatting over ``compute_all``."""
+    summary = data["summary"]
+    console.rule("StoryGraph reading stats")
+    overview = Table.grid(padding=(0, 2))
+    overview.add_column(style="bold")
+    overview.add_column()
+    overview.add_row("Books read", str(summary["read_books"]))
+    overview.add_row("Total finishes (incl. re-reads)", str(summary["total_finishes"]))
+    if summary["undated_reads"]:
+        overview.add_row("Read but undated", str(summary["undated_reads"]))
+    overview.add_row("Rated books", str(summary["rated_books"]))
+    overview.add_row(
+        "Average rating",
+        "—" if summary["mean_rating"] is None else f"{summary['mean_rating']:.2f} ★",
+    )
+    if summary["latest_year"] is not None:
+        overview.add_row(f"Finished in {summary['latest_year']}", str(summary["latest_year_books"]))
+    console.print(overview)
+
+    pace = data["volume_pace"]["reading_pace"]
+    if pace["count"]:
+        console.print(
+            f"\nReading pace: median [bold]{pace['median_days']:g}[/] days to finish "
+            f"(from {pace['count']} dated reads). "
+            f"Fastest: {pace['shortest']['title']} ({pace['shortest']['days']}d); "
+            f"slowest: {pace['longest']['title']} ({pace['longest']['days']}d)."
+        )
+
+    tables = [
+        _pairs_table("Top formats", "Format", data["formats_authors"]["format_split"]),
+        _pairs_table("Top moods", "Mood", data["moods_taste"]["mood_frequency"][:8]),
+        _pairs_table(
+            "Top authors",
+            "Author",
+            data["formats_authors"]["top_authors"][:8],
+            value_header="Books",
+        ),
+    ]
+    console.print("")
+    console.print(Columns(tables, equal=True, expand=True))
+
+
+@app.command("stats")
+def stats(
+    file: Path = StatsFileOption,
+    as_json: bool = typer.Option(
+        False, "--json", help="Print the full stats blob as JSON instead of a summary."
+    ),
+) -> None:
+    """Analyse a StoryGraph library export into reading stats (offline, read-only)."""
+    try:
+        entries = load_export(file)
+    except SourceError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    data = compute_all(entries)
+    if as_json:
+        typer.echo(json.dumps(data, indent=2))
+        return
+    summary = data["summary"]
+    if summary["read_books"] and not summary["total_finishes"]:
+        console.print(
+            "Found read books but no readable finish dates — your export's date format may be "
+            "unexpected, so per-year and pace stats will be empty. Please report this.",
+            style="yellow",
+        )
+    render_stats_summary(data)
 
 
 def build_match_table(items: list[SyncPlanItem]) -> Table:
