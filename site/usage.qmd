@@ -82,11 +82,6 @@ storywell storygraph-login
 storywell storygraph-status
 ```
 
-### `migrate-store`
-
-One-time, non-destructive carry-over of a pre-rename `audible-storygraph-sync` session and sync
-history. See [Install](install.qmd#upgrading-from-audible-storygraph-sync).
-
 ## Flag reference
 
 | Flag | Applies to | Default | Meaning |

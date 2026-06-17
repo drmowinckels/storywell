@@ -181,24 +181,6 @@ def sources() -> None:
         console.print(f"- {name}")
 
 
-@app.command("migrate-store")
-def migrate_store() -> None:
-    """Carry over a pre-rename audible-storygraph-sync session and sync history."""
-    from .migrate import migrate_legacy
-
-    report = migrate_legacy()
-    if not (report.state_migrated or report.store_migrated):
-        console.print("Nothing to migrate (no legacy data, or already migrated).", style="yellow")
-        return
-    if report.state_migrated:
-        console.print("Migrated saved StoryGraph session.", style="green")
-    if report.store_migrated:
-        console.print(
-            f"Migrated sync history: {report.mappings} matches, {report.synced} synced.",
-            style="green",
-        )
-
-
 @app.command("list")
 def list_books(
     source: str = SourceOption,

@@ -35,14 +35,17 @@ real Chromium session via Playwright on the StoryGraph side, sidestepping Cloudf
 
 ## Install
 
+Storywell isn't on PyPI yet, so install it from source (Python 3.11 or 3.12):
+
 ```sh
-pipx install storywell
+git clone https://github.com/drmowinckels/storywell.git
+cd storywell
+python -m pip install -e ".[storygraph]"
 ```
 
-StoryGraph write-back needs Playwright's browser:
+StoryGraph write-back drives a real browser, so install Playwright's Chromium once:
 
 ```sh
-pipx inject storywell playwright
 playwright install chromium
 ```
 
@@ -51,6 +54,8 @@ Then log in once — Storywell saves the session and reuses it:
 ```sh
 storywell storygraph-login
 ```
+
+> Not yet on PyPI. Once released, `pipx install storywell` will be the one-line install.
 
 ## Usage
 
@@ -116,15 +121,6 @@ treats every catalogued book as read, `--read-date` stamps today's date, and `--
 
 Per-source setup and caveats are documented in full in the
 [Sources guide](https://drmowinckels.github.io/storywell/sources.html).
-
-## Upgrading from `audible-storygraph-sync`
-
-The rename moved the config dir and namespaced sync-store keys under their source. Carry your saved
-StoryGraph login and sync history forward once — non-destructively — with:
-
-```sh
-storywell migrate-store
-```
 
 ## Roadmap
 

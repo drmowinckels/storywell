@@ -114,23 +114,6 @@ def test_cli_sources_lists_audible():
     assert "audible" in result.stdout
 
 
-def test_cli_migrate_store_reports_counts(monkeypatch, tmp_path):
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    legacy = tmp_path / "audible-storygraph-sync"
-    legacy.mkdir(parents=True)
-    (legacy / "sync-store.json").write_text('{"mappings": {"B01": "sg1"}, "synced": {}}')
-    result = runner.invoke(app, ["migrate-store"])
-    assert result.exit_code == 0
-    assert "Migrated sync history: 1 matches" in result.stdout
-
-
-def test_cli_migrate_store_nothing_to_do(monkeypatch, tmp_path):
-    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
-    result = runner.invoke(app, ["migrate-store"])
-    assert result.exit_code == 0
-    assert "Nothing to migrate" in result.stdout
-
-
 def test_cli_storygraph_login_success(monkeypatch, tmp_path):
     saved = tmp_path / "state.json"
     monkeypatch.setattr("storywell.storygraph.login", lambda: saved)
