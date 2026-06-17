@@ -4,44 +4,50 @@ meta:
     home: https://drmowinckels.github.io/storywell/
     github: https://github.com/drmowinckels/storywell
 
+# Base palette here is the LIGHT "reading room" alternate; dark.scss carries the
+# primary "library at night" look (Storywell ships dark by default — see head.html).
 color:
   palette:
-    ink: "#211F1C"
-    brass: "#A8743A"
-    teal: "#0E3A39"
-    parchment: "#F4EEE2"
-    cream: "#F1EAD9"
-    # Bootstrap-name aliases so brand.yml-aware tooling resolves them
-    orange: brass
-    teal-brand: teal
+    ink: "#20221d"
+    brass: "#9c6b34"
+    teal: "#0e3a39"
+    putty: "#e4ddcc" # cool greige paper, deliberately not warm cream
+    paper: "#ece6d6"
+    oxblood: "#7b3b3b"
   foreground: ink
-  background: cream
+  background: putty
   primary: brass
   secondary: teal
-  info: teal
   link: brass
+
+logo:
+  images:
+    mark-day: submark.svg
+    mark-night: submark-night.svg
+  small:
+    light: mark-day
+    dark: mark-night
 
 typography:
   fonts:
-    - family: Italiana
+    - family: Fraunces
       source: google
-      weight: [400]
-      style: [normal]
-    - family: Cormorant Garamond
+      weight: [400, 500, 600, 700]
+      style: [normal, italic]
+    - family: Newsreader
       source: google
       weight: [400, 500, 600]
       style: [normal, italic]
-    - family: Manrope
+    - family: IBM Plex Mono
       source: google
-      weight: [400, 500, 600, 700]
+      weight: [400, 500, 600]
       style: [normal]
   base:
-    family: Manrope
-    size: 1.05rem
-    line-height: 1.65
+    family: Newsreader
+    size: 1.08rem
+    line-height: 1.7
   headings:
-    family: Cormorant Garamond
+    family: Fraunces
     weight: 600
-    color: teal
-  link:
-    color: brass
+  monospace:
+    family: IBM Plex Mono

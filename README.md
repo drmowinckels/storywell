@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="img/submark.svg" alt="Storywell" width="116" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="img/submark-night.svg" />
+    <img src="img/submark.svg" alt="Storywell" width="116" />
+  </picture>
 </p>
 
 <h1 align="center">Storywell</h1>

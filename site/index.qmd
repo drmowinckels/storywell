@@ -7,7 +7,8 @@ anchor-sections: false
 ---
 
 ::: {.hero}
-<img class="hero-mark" src="submark.svg" alt="Storywell mark — an arch of book spines fed by two inflowing streams" />
+<img class="hero-mark mark-day" src="submark.svg" alt="Storywell mark — an arch of book spines fed by two inflowing streams" />
+<img class="hero-mark mark-night" src="submark-night.svg" alt="" />
 
 [Sync your shelf]{.eyebrow}
 
