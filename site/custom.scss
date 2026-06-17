@@ -1,0 +1,369 @@
+/*-- scss:defaults --*/
+
+// Base = the LIGHT "reading room". dark.scss carries "library at night".
+$ink: #20221d;
+$brass: #9c6b34;
+$teal: #0e3a39;
+$putty: #e4ddcc;
+$paper: #ece6d6;
+
+$fraunces: "Fraunces", Georgia, serif;
+$newsreader: "Newsreader", Georgia, serif;
+$mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+$navbar-bg: $putty;
+$navbar-light-color: rgba($ink, 0.74);
+$navbar-light-hover-color: $brass;
+$navbar-light-active-color: $brass;
+$navbar-light-brand-color: $ink;
+
+$link-color: $brass;
+$link-hover-color: darken($brass, 12%);
+
+$code-bg: #e7dfcc;
+$code-color: #5c2b2e;
+$code-block-bg: #e9e2d0;
+
+/*-- scss:rules --*/
+
+:root {
+  --sw-ink: #20221d;
+  --sw-brass: #9c6b34;
+  --sw-teal: #0e3a39;
+
+  --sw-bg: #e4ddcc;
+  --sw-surface: #ece6d6;
+  --sw-border: rgba(32, 34, 29, 0.12);
+  --sw-muted: rgba(32, 34, 29, 0.56);
+  --sw-lead: rgba(32, 34, 29, 0.82);
+
+  --sw-hero-from: #ece6d6;
+  --sw-hero-to: #e4ddcc;
+  --sw-glow: rgba(156, 107, 52, 0.18);
+  --sw-wordmark: #20221d;
+
+  --sw-band-bg: #14241c;
+  --sw-band-fg: #e9e2d1;
+  --sw-band-link: #d8b06a;
+
+  --sw-exp-fg: #7b1f1f;
+  --sw-exp-bg: rgba(123, 59, 59, 0.16);
+
+  --sw-btn-fg: #f3eddd;
+  --sw-ghost-fg: #0e3a39;
+  --sw-ghost-border: rgba(14, 58, 57, 0.42);
+
+  --sw-navbar-bg: #e4ddcc;
+  --sw-navbar-fg: rgba(32, 34, 29, 0.76);
+  --sw-code-bg: #e7dfcc;
+  --sw-code-fg: #5c2b2e;
+
+  --sw-rail-top: #b98a3e;
+  --sw-rail-bot: #7c5526;
+  --sw-spine-shadow: rgba(32, 34, 29, 0.16);
+}
+
+// --- Typographic primitives ----------------------------------------------
+// Eyebrows are set in mono — a quiet nod to the CLI this documents.
+
+.eyebrow {
+  font-family: $mono;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--sw-brass);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+}
+.eyebrow.kicker::before {
+  content: "";
+  width: 1.6rem;
+  height: 1px;
+  background: var(--sw-brass);
+  display: inline-block;
+}
+
+.wordmark {
+  font-family: $fraunces;
+  font-optical-sizing: auto;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--sw-wordmark);
+  line-height: 0.98;
+}
+
+.lead-italic {
+  font-family: $newsreader;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.5rem;
+  color: var(--sw-lead);
+  line-height: 1.45;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: $fraunces;
+  font-optical-sizing: auto;
+}
+
+// --- Navbar --------------------------------------------------------------
+// Quarto bakes the navbar bg from `background: light`, so drive it from a var.
+
+#quarto-header .navbar {
+  background-color: var(--sw-navbar-bg) !important;
+  border-bottom: 1px solid var(--sw-border);
+}
+#quarto-header .navbar .nav-link,
+#quarto-header .navbar .navbar-brand,
+#quarto-header .navbar .menu-text,
+#quarto-header .navbar .quarto-navigation-tool {
+  color: var(--sw-navbar-fg) !important;
+}
+#quarto-header .navbar .nav-link:hover,
+#quarto-header .navbar .nav-link:focus,
+#quarto-header .navbar .nav-link.active,
+#quarto-header .navbar .quarto-navigation-tool:hover {
+  color: var(--sw-brass) !important;
+}
+.navbar-brand img {
+  height: 2rem;
+  width: auto;
+}
+
+:not(pre) > code:not(.sourceCode),
+body.quarto-dark :not(pre) > code:not(.sourceCode) {
+  background-color: var(--sw-code-bg);
+  color: var(--sw-code-fg);
+}
+
+// --- Hero: the mark in a pool of light -----------------------------------
+
+.hero {
+  position: relative;
+  text-align: center;
+  padding: 5rem 1rem 4rem;
+  background: linear-gradient(var(--sw-hero-from), var(--sw-hero-to));
+  border-radius: 1rem;
+  margin-bottom: 3.5rem;
+  overflow: hidden;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    46% 42% at 50% 30%,
+    var(--sw-glow) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+.hero > * {
+  position: relative;
+}
+.hero img.hero-mark {
+  width: 138px;
+  height: auto;
+  margin-bottom: 1.5rem;
+}
+.hero-mark.mark-night {
+  display: none;
+}
+.hero .eyebrow {
+  justify-content: center;
+}
+.hero .wordmark {
+  font-size: clamp(3rem, 8vw, 5.4rem);
+}
+.hero .lead-italic {
+  max-width: 35rem;
+  margin: 1.25rem auto 2rem;
+}
+
+.cta-row {
+  display: flex;
+  gap: 0.85rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.btn-brass,
+.btn-ghost {
+  font-family: $mono;
+  font-weight: 500;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+  padding: 0.62rem 1.4rem;
+  border-radius: 0.45rem;
+  text-decoration: none;
+  display: inline-block;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+.btn-brass {
+  background: var(--sw-brass);
+  color: var(--sw-btn-fg);
+  border: 1px solid var(--sw-brass);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--sw-ghost-fg);
+  border: 1px solid var(--sw-ghost-border);
+}
+.btn-brass:hover,
+.btn-ghost:hover {
+  transform: translateY(-2px);
+}
+.btn-brass:hover {
+  box-shadow: 0 6px 18px var(--sw-glow);
+}
+.btn-ghost:hover {
+  border-color: var(--sw-ghost-fg);
+}
+
+// --- Sources: a shelf of spines ------------------------------------------
+
+.sources-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.7rem;
+  align-items: stretch;
+  margin: 1.75rem 0 2.25rem;
+  padding-bottom: 12px;
+}
+.sources-grid::after {
+  content: "";
+  position: absolute;
+  left: -6px;
+  right: -6px;
+  bottom: 0;
+  height: 7px;
+  border-radius: 2px;
+  background: linear-gradient(var(--sw-rail-top), var(--sw-rail-bot));
+  box-shadow: 0 7px 16px var(--sw-spine-shadow);
+}
+@media (max-width: 760px) {
+  .sources-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .sources-grid::after {
+    display: none;
+  }
+}
+.source-card {
+  background: var(--sw-surface);
+  border: 1px solid var(--sw-border);
+  border-top: 4px solid var(--sw-spine, var(--sw-brass));
+  border-radius: 3px 3px 5px 5px;
+  padding: 1rem 0.9rem 1.15rem;
+  box-shadow: 0 1px 0 var(--sw-spine-shadow);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.source-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px var(--sw-spine-shadow);
+}
+.source-card:nth-child(1) {
+  --sw-spine: #c79a52;
+}
+.source-card:nth-child(2) {
+  --sw-spine: #9c5a52;
+}
+.source-card:nth-child(3) {
+  --sw-spine: #4f8a78;
+}
+.source-card:nth-child(4) {
+  --sw-spine: #c9a23f;
+}
+.source-card:nth-child(5) {
+  --sw-spine: #6f82a6;
+}
+.source-card h3 {
+  font-family: $fraunces;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.2rem;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.45rem;
+}
+.source-card .fmt {
+  font-family: $mono;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sw-muted);
+}
+.source-card p {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.experimental {
+  font-family: $mono;
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sw-exp-fg);
+  background: var(--sw-exp-bg);
+  padding: 0.1rem 0.4rem;
+  border-radius: 0.3rem;
+  vertical-align: middle;
+}
+
+// --- Closing band: a lit panel -------------------------------------------
+
+.band {
+  position: relative;
+  background: var(--sw-band-bg);
+  color: var(--sw-band-fg);
+  border-radius: 1rem;
+  padding: 2.5rem 2rem;
+  margin: 3.5rem 0;
+  border-top: 3px solid var(--sw-brass);
+}
+.band h2,
+.band h3 {
+  color: var(--sw-band-fg);
+}
+.band a {
+  color: var(--sw-band-link);
+}
+
+// --- Accessibility floor -------------------------------------------------
+
+a:focus-visible,
+.btn-brass:focus-visible,
+.btn-ghost:focus-visible,
+.source-card:focus-within {
+  outline: 2px solid var(--sw-brass);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-brass,
+  .btn-ghost,
+  .source-card {
+    transition: none;
+  }
+  .btn-brass:hover,
+  .btn-ghost:hover,
+  .source-card:hover {
+    transform: none;
+  }
+}

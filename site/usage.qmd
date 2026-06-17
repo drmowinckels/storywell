@@ -1,0 +1,111 @@
+---
+title: "Usage"
+description: "Every Storywell command and flag, with examples."
+---
+
+The general shape is `storywell <command> [options]`. Most commands take a `--source` (default
+`audible`) and the options that source needs. Run `storywell --help` or `storywell <command> --help`
+at any time.
+
+## Commands
+
+### `sources`
+
+List the vendors Storywell can read from.
+
+```sh
+storywell sources
+```
+
+### `list`
+
+List the finished books a source reports — no StoryGraph involved. Use it to sanity-check a source
+and tune `--threshold` before syncing.
+
+```sh
+storywell list                          # default source: audible
+storywell list --source audible -t 0.9  # lower the "finished" cutoff
+storywell list --source goodreads --file goodreads_library_export.csv
+```
+
+### `sync`
+
+Match a source's finished books to StoryGraph and mark them **read**, then (by default) sync your
+rating and review too.
+
+```sh
+storywell sync --dry-run                # preview the match plan, write nothing
+storywell sync                          # mark finished books as read
+storywell sync --limit 20               # process at most 20 books
+storywell sync --no-ratings             # read status only, skip ratings/reviews
+storywell sync --headed                 # watch the browser work (debugging)
+```
+
+High-confidence matches are written directly; ambiguous ones prompt you to pick a candidate or
+skip. Sync is **idempotent** — matches are keyed by `source:id`, so vendors never collide and a
+book is only re-written if its finish date changed. Progress is saved even if a run is interrupted
+partway through.
+
+Because an audiobook source marks the **audiobook edition**, after matching a book Storywell
+resolves that work's audio edition and marks _that_ read; if a work has no audio edition it falls
+back to the best-matching edition rather than skipping. Non-audio sources tag the best-matching
+edition directly.
+
+### `collections`
+
+Mark the books _contained in_ a finished collection (e.g. an Audible series bundle) as read. Because
+vendors don't expose a collection's contents directly, Storywell proposes titles parsed from the
+StoryGraph entry's description and lets you confirm.
+
+```sh
+storywell collections                   # dry-run (default): preview detected collections
+storywell collections --no-dry-run      # prompt to pick which contained titles to mark read
+```
+
+### `retag`
+
+A read-only report: for books already synced, which are sitting on a **non-audio** StoryGraph
+edition that has an audio edition available to move to. It sizes a back-fill — applying the moves is
+not implemented yet.
+
+```sh
+storywell retag
+storywell retag --limit 50
+```
+
+### `storygraph-login` / `storygraph-status`
+
+Log in to StoryGraph once (saves the session) and check whether the saved session is still valid.
+
+```sh
+storywell storygraph-login
+storywell storygraph-status
+```
+
+### `migrate-store`
+
+One-time, non-destructive carry-over of a pre-rename `audible-storygraph-sync` session and sync
+history. See [Install](install.qmd#upgrading-from-audible-storygraph-sync).
+
+## Flag reference
+
+| Flag | Applies to | Default | Meaning |
+|------|-----------|---------|---------|
+| `--source`, `-s` | all read commands | `audible` | Which vendor to read from. |
+| `--threshold`, `-t` | all read commands | `0.95` | Treat a book as finished when `percent_complete ≥ threshold` (plus anything the source flags complete). |
+| `--auth-file` | audible | auto | Path to the `audible-cli` auth JSON. Auto-discovered if omitted. |
+| `--profile` | audible | primary | `audible-cli` profile name. |
+| `--file`, `-f` | goodreads, librarything, kobo | — | Path to the export CSV / SQLite database. |
+| `--token` | hardcover | `$HARDCOVER_TOKEN` | Hardcover personal API token. |
+| `--as-read` | librarything | off | Treat every catalogued book as read (it's a catalogue, not a read tracker). |
+| `--read-date` | librarything | off | Stamp today's date as the finish date for `--as-read` books with no Date Read. |
+| `--collection` | librarything | all | Only import books in this collection (repeatable; omit for all). |
+| `--dry-run` / `--no-dry-run` | sync, collections | see below | Preview without writing. `sync` defaults to writing; `collections` defaults to dry-run. |
+| `--limit` | sync, retag | `0` (all) | Process at most N books. |
+| `--ratings` / `--no-ratings` | sync | on | Also sync your rating + review (with a narrator note). |
+| `--headless` / `--headed` | sync, collections, retag | headless | Run the browser hidden, or `--headed` to watch/debug. |
+| `--version` | root | — | Print version and exit. |
+
+## Next
+
+- [Sources](sources.qmd) — how to produce each source's input, and which flags it needs.

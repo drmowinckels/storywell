@@ -1,0 +1,100 @@
+---
+pagetitle: "Storywell — Sync your shelf"
+description: "Sync the books you've finished — across every vendor — into The StoryGraph."
+page-layout: full
+toc: false
+anchor-sections: false
+---
+
+::: {.hero}
+<img class="hero-mark mark-day" src="submark.svg" alt="Storywell mark — an arch of book spines fed by two inflowing streams" />
+<img class="hero-mark mark-night" src="submark-night.svg" alt="" />
+
+[Sync your shelf]{.eyebrow}
+
+[Storywell]{.wordmark}
+
+[A quiet well of every book you've finished — pulled from Audible, Goodreads & more, and marked read on The StoryGraph.]{.lead-italic}
+
+::: {.cta-row}
+[Get started](install.qmd){.btn-brass}
+[View on GitHub](https://github.com/drmowinckels/storywell){.btn-ghost}
+:::
+:::
+
+[Overview]{.eyebrow .kicker}
+
+## What it does
+
+Storywell reads the books you've **finished** from a _source_ — Audible, a Goodreads export,
+your Kobo, and others — and marks them **read** on [The StoryGraph](https://app.thestorygraph.com),
+which has no public import API. It matches each book to the right StoryGraph entry (by ISBN when a
+source provides one, by title and author otherwise), writes the finish date, and optionally carries
+over your rating and review. Re-runs are idempotent: a book is only re-written if its finish date
+changed.
+
+[Origin]{.eyebrow .kicker}
+
+## Why it exists
+
+The previous community tool,
+[`good_audible_story_sync`](https://github.com/cheshire137/good-audible-story-sync), stopped working
+when StoryGraph put up a Cloudflare bot challenge its Mechanize scraper couldn't solve. Storywell
+replaces it with a Python CLI that drives a real Chromium session via Playwright on the StoryGraph
+side — sidestepping Cloudflare entirely — and a pluggable source layer on the other.
+
+[One shelf, many sources]{.eyebrow .kicker}
+
+## Sources
+
+One `--source` flag, one matching-and-writing engine behind it. Audiobook sources mark the
+**audiobook edition** on StoryGraph; the rest tag the best-matching edition.
+
+::: {.sources-grid}
+::: {.source-card}
+### Audible <span class="fmt">audio</span>
+Reads your finished audiobooks through the maintained `audible` library. The default source.
+:::
+::: {.source-card}
+### Goodreads <span class="fmt">mixed</span>
+Reads a `goodreads_library_export.csv`. ISBN-rich, so matching resolves by identifier.
+:::
+::: {.source-card}
+### Kobo <span class="fmt">ebook</span>
+Reads finished books straight from an on-device `KoboReader.sqlite`.
+:::
+::: {.source-card}
+### LibraryThing <span class="fmt">mixed</span> <span class="experimental">experimental</span>
+Reads a CSV/JSON export. A catalogue, not a tracker — you choose what counts as read.
+:::
+::: {.source-card}
+### Hardcover <span class="fmt">mixed</span> <span class="experimental">experimental</span>
+Reads your shelf over GraphQL with a personal API token.
+:::
+:::
+
+[See the full setup for each source →](sources.qmd)
+
+[Three commands]{.eyebrow .kicker}
+
+## Quickstart
+
+```sh
+pipx install storywell
+pipx inject storywell playwright && playwright install chromium
+
+storywell storygraph-login          # log in to StoryGraph once
+storywell sync --dry-run            # preview the match plan
+storywell sync                      # mark finished books as read
+```
+
+[Full install & usage →](install.qmd)
+
+::: {.band}
+### Still early, and honest about it
+
+Audible → StoryGraph sync is solid. Goodreads and Kobo are validated against real exports.
+LibraryThing and Hardcover are **experimental** — read the
+[caveats](sources.qmd#experimental-sources) before you trust a run. See where it's headed on the
+[roadmap](roadmap.qmd).
+:::

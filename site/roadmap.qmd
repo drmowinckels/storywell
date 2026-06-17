@@ -1,0 +1,34 @@
+---
+title: "Roadmap"
+description: "What works today, what's experimental, and what's next."
+---
+
+Storywell is alpha software (`0.1.0a0`). The Audible → StoryGraph path is solid; the multi-source
+layer is in and parsing-validated, with two sources still [experimental](sources.qmd#experimental-sources).
+
+## Done
+
+- [x] Audible → StoryGraph: list, match, mark-as-read with finish dates
+- [x] Multi-source architecture (`--source`, pluggable provider registry, ISBN-first matching)
+- [x] Goodreads source (CSV export → StoryGraph)
+- [x] Kobo source (on-device `KoboReader.sqlite`)
+- [x] LibraryThing source (CSV/JSON export) — _experimental_
+- [x] Hardcover source (GraphQL) — _experimental_
+- [x] Ratings & reviews sync (with narrator note)
+- [x] Audio-edition tagging (audiobook sources mark the audio edition)
+- [x] Idempotent, interruption-safe sync keyed by `source:id`
+
+## Next
+
+- [ ] Harden the experimental sources against more real exports / a live Hardcover token
+- [ ] Verify cross-source de-duplication on a real mixed-source run
+- [ ] Audio-edition **retag** write side (today `retag` only reports — see [Usage](usage.qmd#retag))
+- [ ] currently-reading sync
+- [ ] Homebrew tap
+- [ ] Hosted UI
+
+## Contributing
+
+The matching/write engine is source-agnostic, so the highest-leverage contribution is a new
+vendor — see [Adding a source](adding-a-source.qmd). Issues and PRs welcome on
+[GitHub](https://github.com/drmowinckels/storywell).

@@ -1,0 +1,71 @@
+---
+title: "Install"
+description: "Install Storywell, set up StoryGraph write-back, and register your first source."
+---
+
+Storywell is a Python CLI (3.11–3.12). The recommended install is [pipx](https://pipx.pypa.io),
+which keeps it in its own isolated environment.
+
+```sh
+pipx install storywell
+```
+
+## StoryGraph write-back
+
+StoryGraph has no import API, so Storywell writes through a real browser session using
+[Playwright](https://playwright.dev/python/). Install the browser once:
+
+```sh
+pipx inject storywell playwright
+playwright install chromium
+```
+
+Then log in a single time — Storywell saves the session and reuses it for every later sync:
+
+```sh
+storywell storygraph-login          # opens a browser; log in, then return to the terminal
+storywell storygraph-status         # check the saved session is still valid
+```
+
+## Register a source
+
+Every sync reads from a `--source` (default: `audible`). List what's available:
+
+```sh
+storywell sources
+```
+
+### Audible
+
+The Audible source uses [`audible-cli`](https://github.com/mkb79/audible-cli) to register your
+account once:
+
+```sh
+pipx install audible-cli
+audible quickstart
+```
+
+Storywell reads `~/.audible/config.toml` to find the active profile's auth file. If you use a
+non-default profile, pass `--profile <name>`; to bypass discovery entirely, pass
+`--auth-file /path/to/profile.json`.
+
+### File & API sources
+
+Goodreads, Kobo, and LibraryThing read a file you already have; Hardcover reads an API. None
+need a separate install — you point Storywell at the export or token at run time. See
+[Sources](sources.qmd) for where each input comes from.
+
+## Upgrading from `audible-storygraph-sync`
+
+The project was renamed from `audible-storygraph-sync` to Storywell. The rename moved the config
+directory and namespaced sync-store keys under their source. Carry your saved StoryGraph login and
+sync history forward once — non-destructively:
+
+```sh
+storywell migrate-store
+```
+
+## Next
+
+- [Usage](usage.qmd) — every command and flag, with examples.
+- [Sources](sources.qmd) — per-source setup and caveats.

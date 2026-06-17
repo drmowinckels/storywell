@@ -1,0 +1,53 @@
+meta:
+  name: Storywell
+  link:
+    home: https://drmowinckels.github.io/storywell/
+    github: https://github.com/drmowinckels/storywell
+
+# Base palette here is the LIGHT "reading room" alternate; dark.scss carries the
+# primary "library at night" look (Storywell ships dark by default — see head.html).
+color:
+  palette:
+    ink: "#20221d"
+    brass: "#9c6b34"
+    teal: "#0e3a39"
+    putty: "#e4ddcc" # cool greige paper, deliberately not warm cream
+    paper: "#ece6d6"
+    oxblood: "#7b3b3b"
+  foreground: ink
+  background: putty
+  primary: brass
+  secondary: teal
+  link: brass
+
+logo:
+  images:
+    mark-day: submark.svg
+    mark-night: submark-night.svg
+  small:
+    light: mark-day
+    dark: mark-night
+
+typography:
+  fonts:
+    - family: Fraunces
+      source: google
+      weight: [400, 500, 600, 700]
+      style: [normal, italic]
+    - family: Newsreader
+      source: google
+      weight: [400, 500, 600]
+      style: [normal, italic]
+    - family: IBM Plex Mono
+      source: google
+      weight: [400, 500, 600]
+      style: [normal]
+  base:
+    family: Newsreader
+    size: 1.08rem
+    line-height: 1.7
+  headings:
+    family: Fraunces
+    weight: 600
+  monospace:
+    family: IBM Plex Mono

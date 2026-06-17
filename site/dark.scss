@@ -1,0 +1,111 @@
+/*-- scss:defaults --*/
+
+// "Library at night" — Storywell's primary look (default via head.html). A deep
+// bottle-green ground (green-black, not neutral black), parchment ink, glowing brass.
+$night-bg: #0f1d16;
+$night-surface: #16271e;
+$night-fg: #e9e2d1;
+$night-head: #f0e9d8;
+$night-brass: #d8b06a;
+$night-border: rgba(233, 226, 209, 0.13);
+
+$body-bg: $night-bg;
+$body-color: $night-fg;
+$headings-color: $night-head;
+$border-color: $night-border;
+
+$link-color: $night-brass;
+$link-hover-color: lighten($night-brass, 8%);
+
+$navbar-bg: #0c1812;
+$navbar-light-color: rgba($night-fg, 0.78);
+$navbar-light-hover-color: $night-brass;
+$navbar-light-active-color: $night-brass;
+$navbar-light-brand-color: $night-head;
+
+$code-bg: $night-surface;
+$code-color: #e6c98a;
+$code-block-bg: #14231c;
+
+/*-- scss:rules --*/
+
+:root {
+  --sw-ink: #e9e2d1;
+  --sw-brass: #d8b06a;
+
+  --sw-bg: #0f1d16;
+  --sw-surface: #16271e;
+  --sw-border: rgba(233, 226, 209, 0.13);
+  --sw-muted: rgba(233, 226, 209, 0.55);
+  --sw-lead: rgba(233, 226, 209, 0.86);
+
+  --sw-hero-from: #18291f;
+  --sw-hero-to: #0f1d16;
+  --sw-glow: rgba(216, 176, 106, 0.2);
+  --sw-wordmark: #f0e9d8;
+
+  --sw-band-bg: #1b2c22;
+  --sw-band-fg: #e9e2d1;
+  --sw-band-link: #e7c489;
+
+  --sw-exp-fg: #ff9a8f;
+  --sw-exp-bg: rgba(255, 138, 128, 0.15);
+
+  --sw-btn-fg: #15211a;
+  --sw-ghost-fg: #e3dcc9;
+  --sw-ghost-border: rgba(227, 220, 201, 0.4);
+
+  --sw-navbar-bg: #0c1812;
+  --sw-navbar-fg: rgba(233, 226, 209, 0.8);
+  --sw-code-bg: #16271e;
+  --sw-code-fg: #e6c98a;
+
+  --sw-rail-top: #d8b06a;
+  --sw-rail-bot: #8a5e2a;
+  --sw-spine-shadow: rgba(0, 0, 0, 0.55);
+}
+
+// Brand sets Fraunces headings to the light foreground; force parchment on night.
+h1,
+h2,
+h3,
+h4,
+h5 {
+  color: var(--sw-wordmark);
+}
+.band h2,
+.band h3 {
+  color: var(--sw-band-fg);
+}
+
+// Spines lit from within: a soft cloth gradient + a warm headband glow.
+.source-card {
+  background: linear-gradient(#1a2c22, #142420);
+}
+.source-card:hover {
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(216, 176, 106, 0.18);
+}
+
+// The lit panel reads as a pool of lamplight on the dark page.
+.band {
+  box-shadow: inset 0 1px 40px rgba(216, 176, 106, 0.07);
+}
+
+// Swap to the reversed (light-arch) mark on the dark ground.
+.hero-mark.mark-day {
+  display: none;
+}
+.hero-mark.mark-night {
+  display: inline-block;
+}
+
+// Force code surfaces dark (Quarto bakes a light code-block bg that otherwise wins).
+body.quarto-dark div.sourceCode,
+body.quarto-dark pre.sourceCode,
+body.quarto-dark pre:not(.sourceCode),
+body.quarto-dark pre > code.sourceCode {
+  background-color: #14231c;
+  border-color: var(--sw-border);
+}

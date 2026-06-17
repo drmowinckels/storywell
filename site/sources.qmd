@@ -1,0 +1,127 @@
+---
+title: "Sources"
+description: "How to produce each source's input, the flags it needs, and what's still unproven."
+---
+
+A **source** is a vendor Storywell can read finished books from. Each source owns its own
+auth/fetch details and normalises everything into the same internal shape, so the StoryGraph
+matching-and-writing side is identical regardless of where the books came from.
+
+Two things vary per source and matter for results:
+
+- **ISBNs.** Sources that export ISBNs (Goodreads, Kobo, LibraryThing, Hardcover) let StoryGraph
+  match by identifier, which is far more reliable than fuzzy title/author matching (Audible, which
+  has no ISBNs).
+- **Media format.** An `audio` source marks the audiobook edition on StoryGraph; `ebook`/`print`
+  sources tag the best-matching edition; `mixed` is left to per-book resolution.
+
+## Audible
+
+- **Format:** audio · **Flags:** `--auth-file`, `--profile`
+
+Reads your finished audiobooks through the maintained
+[`audible`](https://github.com/mkb79/Audible) library. Set it up once with `audible-cli`
+(see [Install → Audible](install.qmd#audible)). Audible has no public API and no ISBNs, so matching
+is title/author based.
+
+```sh
+storywell sync --source audible
+```
+
+## Goodreads
+
+- **Format:** mixed · **Flags:** `--file`
+
+Export your library from Goodreads under **Settings → Export**, which produces a
+`goodreads_library_export.csv`. Only rows on the `read` shelf are treated as finished. ISBNs are
+exported as Excel-safe formulas (`="9780..."`) and unwrapped automatically, so matching resolves by
+identifier where available.
+
+```sh
+storywell sync --source goodreads --file goodreads_library_export.csv
+```
+
+::: {.callout-note}
+## What's validated, what isn't
+Parsing is validated against real exports (1,156 rows across three files, old and post-2022
+layouts) with ~90% ISBN coverage. Two things to know: many `read` rows have **no Date Read**, so
+those are marked read without a finish date; and the cross-source **de-duplication** premise — that
+the same book coming from two sources collapses to one StoryGraph write — is **not yet verified**
+against a real mixed-source run.
+:::
+
+## Kobo
+
+- **Format:** ebook · **Flags:** `--file`
+
+A Kobo e-reader stores its library in a SQLite database, `KoboReader.sqlite`, in the hidden
+`.kobo` directory on the mounted device. Point Storywell at that file; books live in the `content`
+table and the standard finished filter applies.
+
+```sh
+storywell sync --source kobo --file /Volumes/KOBOeReader/.kobo/KoboReader.sqlite
+```
+
+The schema is validated against a real device database (67-column `content` table); every column
+read is present and the query runs without error.
+
+## Experimental sources {#experimental-sources}
+
+These parse correctly against the exports they've seen, but haven't been exercised broadly enough to
+trust unattended. Run them with `--dry-run` (sync) first and eyeball the match plan.
+
+### LibraryThing
+
+- **Format:** mixed · **Flags:** `--file`, `--as-read`, `--read-date`, `--collection`
+
+LibraryThing is a **catalogue, not a read-status tracker** — a typical export lists every book in
+your library with no read flag and no Date Read. So Storywell reports the catalogue and lets you
+decide what counts as read:
+
+- default: only books LibraryThing actually flags read (a "Read"-style collection or a real Date
+  Read) count — for a pure catalogue that is usually none;
+- `--as-read`: treat every reported book as read;
+- `--read-date`: stamp today as a placeholder finish date on `--as-read` books with no Date Read;
+- `--collection NAME`: only import books in that collection (repeatable; omit for the whole
+  catalogue). This is how you scope to a custom "Read" or "Favorites" collection.
+
+```sh
+storywell sync --source librarything --file librarything_export.tsv \
+  --collection "Read" --as-read --read-date
+```
+
+Both the TAB-delimited CSV and the `.json` export are accepted (JSON is preferred when available —
+its `originaltitle` matches StoryGraph better).
+
+::: {.callout-warning}
+## Experimental
+Validated against a **single** real export (TAB-delimited, UTF-8 with BOM). Column lookups are
+case-insensitive with fallbacks for older layouts, but it hasn't been exercised on more exports —
+treat results as unproven.
+:::
+
+### Hardcover
+
+- **Format:** mixed · **Flags:** `--token`
+
+Reads your shelf over Hardcover's GraphQL API. Get a personal token at
+[hardcover.app/account/api](https://hardcover.app/account/api) and pass it with `--token`, or set
+`HARDCOVER_TOKEN` in your environment.
+
+```sh
+export HARDCOVER_TOKEN="hc_..."
+storywell sync --source hardcover
+```
+
+::: {.callout-warning}
+## Experimental
+The query and response mapping were verified against Hardcover's official GraphQL schema (2026-06),
+and field access is defensive so schema drift degrades to empty rather than crashing. But it has
+**not been run against a live token**, and "finished" relies on Hardcover's documented
+`status_id == 3` ("Read") mapping rather than something the schema pins down. Verify a `--dry-run`
+before trusting a write.
+:::
+
+## Next
+
+- [Adding a source](adding-a-source.qmd) — wire in a new vendor.

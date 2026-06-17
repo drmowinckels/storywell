@@ -1,0 +1,45 @@
+<script>
+  // Storywell ships "library at night" (dark) by default, but honours an explicit
+  // system preference and the visitor's own toggle. Quarto's base theme is the light
+  // "reading room" (sentinel "default") and the dark library is the alternate
+  // (sentinel "alternate"); Quarto only reads its own localStorage sentinel and never
+  // consults prefers-color-scheme, so we seed it here before Quarto's theme script runs.
+  (function () {
+    try {
+      var KEY = "quarto-color-scheme";
+      var USER = "sw-scheme-user-set";
+      // Dark unless the OS is explicitly set to light.
+      var systemSentinel = function () {
+        return window.matchMedia("(prefers-color-scheme: light)").matches
+          ? "default"
+          : "alternate";
+      };
+
+      if (localStorage.getItem(USER) !== "true") {
+        localStorage.setItem(KEY, systemSentinel());
+      }
+
+      window
+        .matchMedia("(prefers-color-scheme: light)")
+        .addEventListener("change", function () {
+          if (localStorage.getItem(USER) === "true") return;
+          var current = localStorage.getItem(KEY) || "alternate";
+          if (
+            current !== systemSentinel() &&
+            typeof window.quartoToggleColorScheme === "function"
+          ) {
+            window.quartoToggleColorScheme();
+          }
+        });
+
+      document.addEventListener("click", function (e) {
+        if (
+          e.target.closest &&
+          e.target.closest(".quarto-color-scheme-toggle")
+        ) {
+          localStorage.setItem(USER, "true");
+        }
+      });
+    } catch (e) {}
+  })();
+</script>

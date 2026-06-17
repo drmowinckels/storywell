@@ -1,0 +1,56 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Storywell"
+  description: "Sync the books you've finished — across every vendor — into The StoryGraph."
+  site-url: https://drmowinckels.github.io/storywell/
+  repo-url: https://github.com/drmowinckels/storywell
+  favicon: submark.svg
+  open-graph: true
+  navbar:
+    background: light
+    logo: submark.svg
+    title: false
+    left:
+      - text: Install
+        href: install.qmd
+      - text: Usage
+        href: usage.qmd
+      - text: Sources
+        href: sources.qmd
+      - text: Adding a source
+        href: adding-a-source.qmd
+      - text: Roadmap
+        href: roadmap.qmd
+    right:
+      - icon: github
+        href: https://github.com/drmowinckels/storywell
+        aria-label: Storywell on GitHub
+  page-footer:
+    border: false
+    left: |
+      **Storywell** · A quiet well of every book you've finished.
+    right: |
+      [MIT](https://github.com/drmowinckels/storywell/blob/main/LICENSE) ·
+      [GitHub](https://github.com/drmowinckels/storywell)
+
+format:
+  html:
+    include-in-header: head.html
+    theme:
+      light:
+        - brand
+        - custom.scss
+      dark:
+        - brand
+        - custom.scss
+        - dark.scss
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    code-overflow: wrap
+    grid:
+      body-width: 880px
+    anchor-sections: true
