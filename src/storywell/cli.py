@@ -230,6 +230,18 @@ StatsFileOption = typer.Option(
     help="Path to your StoryGraph library CSV export "
     "(Account → Manage Account → Export StoryGraph Library).",
 )
+StatsHtmlOption = typer.Option(
+    None,
+    "--html",
+    dir_okay=False,
+    writable=True,
+    help="Write a self-contained HTML dashboard to this path instead of printing a summary.",
+)
+StatsOpenOption = typer.Option(
+    False,
+    "--open",
+    help="Open the written HTML dashboard in your browser (requires --html).",
+)
 
 
 def _pairs_table(
@@ -292,8 +304,13 @@ def stats(
     as_json: bool = typer.Option(
         False, "--json", help="Print the full stats blob as JSON instead of a summary."
     ),
+    html: Path | None = StatsHtmlOption,
+    open_browser: bool = StatsOpenOption,
 ) -> None:
     """Analyse a StoryGraph library export into reading stats (offline, read-only)."""
+    if open_browser and html is None:
+        console.print("--open needs --html PATH (there's no dashboard to open).", style="red")
+        raise typer.Exit(code=1)
     try:
         entries = load_export(file)
     except SourceError as err:
@@ -311,6 +328,20 @@ def stats(
             "unexpected, so per-year and pace stats will be empty. Please report this.",
             style="yellow",
         )
+    if html is not None:
+        from .stats.render import StatsDependencyError, write_dashboard
+
+        try:
+            out = write_dashboard(data, html)
+        except StatsDependencyError as err:
+            console.print(str(err), style="red")
+            raise typer.Exit(code=1) from err
+        console.print(f"Wrote dashboard to {out}", style="green")
+        if open_browser:
+            import webbrowser
+
+            webbrowser.open(out.resolve().as_uri())
+        return
     render_stats_summary(data)
 
 

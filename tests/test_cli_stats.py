@@ -46,3 +46,19 @@ def test_stats_warns_when_read_books_have_no_readable_dates(tmp_path):
     result = runner.invoke(app, ["stats", "-f", str(export)])
     assert result.exit_code == 0
     assert "no readable finish dates" in result.stdout
+
+
+def test_stats_html_writes_self_contained_dashboard(tmp_path):
+    out = tmp_path / "stats.html"
+    result = runner.invoke(app, ["stats", "-f", str(FIXTURE), "--html", str(out)])
+    assert result.exit_code == 0
+    assert "Wrote dashboard to" in result.stdout
+    html = out.read_text(encoding="utf-8")
+    assert html.startswith("<!DOCTYPE html>")
+    assert "http://" not in html and "https://" not in html
+
+
+def test_stats_open_without_html_errors():
+    result = runner.invoke(app, ["stats", "-f", str(FIXTURE), "--open"])
+    assert result.exit_code == 1
+    assert "needs --html" in result.stdout
