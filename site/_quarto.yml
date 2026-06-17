@@ -11,7 +11,6 @@ website:
   open-graph: true
   navbar:
     background: light
-    logo: submark.svg
     title: false
     left:
       - text: Install

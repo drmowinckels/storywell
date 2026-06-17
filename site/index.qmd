@@ -80,8 +80,8 @@ Reads your shelf over GraphQL with a personal API token.
 ## Quickstart
 
 ```sh
-pipx install storywell
-pipx inject storywell playwright && playwright install chromium
+git clone https://github.com/drmowinckels/storywell.git
+cd storywell && pip install -e ".[storygraph]" && playwright install chromium
 
 storywell storygraph-login          # log in to StoryGraph once
 storywell sync --dry-run            # preview the match plan
