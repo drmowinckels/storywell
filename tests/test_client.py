@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 
+from storywell.models import Shelf
 from storywell.storygraph.client import (
     DATE_DAY_SELECTOR,
     DATE_MONTH_SELECTOR,
@@ -15,6 +16,8 @@ from storywell.storygraph.client import (
     SUBMIT_INSTANCE_SELECTOR,
     StorygraphClient,
     date_fields,
+    expected_label,
+    status_form_selector,
 )
 from storywell.storygraph.session import StorygraphAuthError
 
@@ -23,6 +26,26 @@ SIGN_IN_URL = "https://app.thestorygraph.com/users/sign_in"
 
 def test_date_fields():
     assert date_fields(date(2023, 8, 5)) == {"day": "5", "month": "8", "year": "2023"}
+
+
+def test_status_form_selector_parameterises_each_shelf():
+    assert status_form_selector(Shelf.READ) == STATUS_READ_FORM_SELECTOR
+    assert status_form_selector(Shelf.READ) == (
+        "form[action*='/update-status'][action*='status=read']"
+    )
+    assert status_form_selector(Shelf.TO_READ) == (
+        "form[action*='/update-status'][action*='status=to-read']"
+    )
+    assert status_form_selector("currently-reading") == (
+        "form[action*='/update-status'][action*='status=currently-reading']"
+    )
+
+
+def test_expected_label_uses_spaces_not_slug_hyphens():
+    assert expected_label(Shelf.READ) == "read"
+    assert expected_label(Shelf.TO_READ) == "to read"
+    assert expected_label(Shelf.DID_NOT_FINISH) == "did not finish"
+    assert expected_label("currently-reading") == "currently reading"
 
 
 class _FakeLabel:
@@ -231,6 +254,85 @@ def test_mark_finished_raises_when_session_expired(tmp_path):
     page = _FakePage({}, redirect_to=SIGN_IN_URL)
     with _client(page, tmp_path) as client, pytest.raises(StorygraphAuthError):
         client.mark_finished("b1")
+
+
+def test_mark_shelf_submits_to_read_form_when_not_on_shelf(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    form = _FakeForm(on_submit=lambda: page.set_label("to read"))
+    page.elements[status_form_selector(Shelf.TO_READ)] = form
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.TO_READ) is True
+    assert form.submitted is True
+
+
+def test_mark_shelf_noop_when_already_on_shelf(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.TO_READ) is True
+    assert page.goto_urls == ["https://app.thestorygraph.com/books/b1"]
+
+
+def test_mark_shelf_currently_reading_uses_its_own_form(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
+    form = _FakeForm(on_submit=lambda: page.set_label("currently reading"))
+    page.elements[status_form_selector(Shelf.CURRENTLY_READING)] = form
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.CURRENTLY_READING) is True
+    assert form.submitted is True
+
+
+def test_mark_shelf_false_when_target_form_missing(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.TO_READ) is False
+
+
+def test_mark_shelf_false_when_status_never_flips(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    form = _FakeForm()  # submits but the label never changes to the target
+    page.elements[status_form_selector(Shelf.TO_READ)] = form
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.TO_READ) is False
+    assert form.submitted is True
+
+
+def test_mark_shelf_ignores_date_for_non_read_shelf(tmp_path):
+    # a date passed to a non-read shelf must NOT trigger the dated-read flow;
+    # the plain status form is used instead.
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    form = _FakeForm(on_submit=lambda: page.set_label("to read"))
+    page.elements[status_form_selector(Shelf.TO_READ)] = form
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.TO_READ, date(2023, 8, 18)) is True
+    assert form.submitted is True
+    assert not any("/read_instances/new" in u for u in page.goto_urls)
+
+
+def test_mark_shelf_read_with_date_uses_dated_read_flow(tmp_path):
+    year, month, day = _FakeSelect(), _FakeSelect(), _FakeSelect()
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
+    submit = _FakeSubmit(on_click=lambda: page.set_label("read"))
+    page.elements.update(
+        {
+            DATE_YEAR_SELECTOR: year,
+            DATE_MONTH_SELECTOR: month,
+            DATE_DAY_SELECTOR: day,
+            SUBMIT_INSTANCE_SELECTOR: submit,
+        }
+    )
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", Shelf.READ, date(2023, 8, 18)) is True
+    assert (year.value, month.value, day.value) == ("2023", "8", "18")
+    assert any("/read_instances/new?book_id=b1" in u for u in page.goto_urls)
+
+
+def test_mark_shelf_accepts_string_status(tmp_path):
+    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    form = _FakeForm(on_submit=lambda: page.set_label("to read"))
+    page.elements[status_form_selector(Shelf.TO_READ)] = form
+    with _client(page, tmp_path) as client:
+        assert client.mark_shelf("b1", "to-read") is True
+    assert form.submitted is True
 
 
 def test_client_with_external_page_is_noop_on_already_read():

@@ -58,8 +58,10 @@ class MyVendorSource:
 ```
 
 The CLI option names map to constructor parameters as: `--file → path`, `--token → token`,
-`--auth-file → auth_file`, `--profile → profile`, `--as-read → mark_read`, `--read-date →
-read_date`, `--collection → collections`. Declare the ones you want; ignore the others.
+`--auth-file → auth_file`, `--profile → profile`, `--shelf → shelf`, `--as-read → mark_read`,
+`--read-date → read_date`, `--collection → collections`. Declare the ones you want; ignore the
+others. A library/borrow source that wants its books on a non-`read` shelf accepts `shelf` and
+sets each `SourceBook.status` accordingly (a finished signal still wins and routes to `read`).
 
 ## Reuse the CSV machinery
 

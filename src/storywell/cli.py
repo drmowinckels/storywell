@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
-from .models import SourceBook
+from .models import WRITABLE_SHELVES, Shelf, SourceBook
 from .sources import SourceError, available_sources, make_source
 from .stats import compute_all, load_export
 
@@ -67,23 +67,51 @@ TokenOption = typer.Option(
     "--token",
     help="API sources (hardcover): personal API token.",
 )
+_SHELF_CHOICES = ", ".join(s.value for s in WRITABLE_SHELVES)
+ShelfOption = typer.Option(
+    None,
+    "--shelf",
+    help="Route a source's books with no finished signal to this StoryGraph shelf "
+    f"({_SHELF_CHOICES}). Finished books always go to 'read'. Omit to stay read-only "
+    "(read-trackers are unaffected). For catalogue sources like LibraryThing this routes "
+    "the whole catalogue; '--shelf read' is the modern spelling of --as-read.",
+)
 AsReadOption = typer.Option(
     False,
     "--as-read",
-    help="LibraryThing only: treat every catalogued book as read (it's a catalogue, not a "
-    "read tracker).",
+    help="LibraryThing only: legacy alias for '--shelf read' (treat every catalogued book "
+    "as read).",
 )
 ReadDateOption = typer.Option(
     False,
     "--read-date",
-    help="LibraryThing only: stamp today's date as the finish date for --as-read books that "
+    help="LibraryThing only: stamp today's date as the finish date for read books that "
     "have no Date Read.",
 )
+
+
 CollectionOption = typer.Option(
     None,
     "--collection",
     help="LibraryThing only: only import books in this collection (repeatable; omit for all).",
 )
+
+
+def _parse_shelf(value: str | None, *, as_read: bool) -> Shelf | None:
+    """Resolve the requested target shelf from --shelf (preferred) or the legacy --as-read.
+
+    Returns None when neither was given (read-only). Rejects an unknown or non-writable shelf
+    so a typo fails loudly instead of silently doing nothing."""
+    if value is None:
+        return Shelf.READ if as_read else None
+    try:
+        shelf = Shelf(value.strip().lower())
+    except ValueError:
+        shelf = None
+    if shelf not in WRITABLE_SHELVES:
+        console.print(f"Unknown shelf '{value}'. Choose one of: {_SHELF_CHOICES}.", style="red")
+        raise typer.Exit(code=1)
+    return shelf
 
 
 def _version_callback(value: bool) -> None:
@@ -114,7 +142,7 @@ def _load_finished(
     profile: str | None = None,
     path: Path | None = None,
     token: str | None = None,
-    mark_read: bool = False,
+    shelf: Shelf | None = None,
     read_date: bool = False,
     collections: tuple[str, ...] = (),
 ) -> list[SourceBook]:
@@ -124,7 +152,7 @@ def _load_finished(
         profile=profile,
         path=path,
         token=token,
-        mark_read=mark_read,
+        shelf=shelf,
         read_date=read_date,
         collections=collections,
     )
@@ -194,11 +222,13 @@ def list_books(
     profile: str | None = ProfileOption,
     file: Path | None = FileOption,
     token: str | None = TokenOption,
+    shelf: str | None = ShelfOption,
     as_read: bool = AsReadOption,
     read_date: bool = ReadDateOption,
     collection: list[str] = CollectionOption,
 ) -> None:
-    """List the finished books a source reports."""
+    """List the books a source reports for syncing."""
+    target = _parse_shelf(shelf, as_read=as_read)
     try:
         books = _load_finished(
             source,
@@ -207,7 +237,7 @@ def list_books(
             profile=profile,
             path=file,
             token=token,
-            mark_read=as_read,
+            shelf=target,
             read_date=read_date,
             collections=tuple(collection or ()),
         )
@@ -412,6 +442,7 @@ def sync(
     profile: str | None = ProfileOption,
     file: Path | None = FileOption,
     token: str | None = TokenOption,
+    shelf: str | None = ShelfOption,
     as_read: bool = AsReadOption,
     read_date: bool = ReadDateOption,
     collection: list[str] = CollectionOption,
@@ -426,8 +457,10 @@ def sync(
     ),
     headless: bool = typer.Option(True, "--headless/--headed", help=HEADLESS_HELP),
 ) -> None:
-    """Mark a source's finished books as read on StoryGraph (and sync ratings/reviews).
+    """Sync a source's books to StoryGraph shelves (and sync ratings/reviews).
 
+    Finished books are marked read; with --shelf, books that have no finished signal are
+    routed to the chosen shelf instead (default: read-only, so read-trackers are unaffected).
     Writes high-confidence matches directly and prompts on ambiguous ones.
     Use --dry-run to preview the match plan without writing anything.
     """
@@ -444,6 +477,7 @@ def sync(
     from .storygraph.client import StorygraphClient
     from .storygraph.search import StorygraphSearcher
 
+    target = _parse_shelf(shelf, as_read=as_read)
     try:
         books = _load_finished(
             source,
@@ -452,7 +486,7 @@ def sync(
             profile=profile,
             path=file,
             token=token,
-            mark_read=as_read,
+            shelf=target,
             read_date=read_date,
             collections=tuple(collection or ()),
         )
@@ -461,7 +495,7 @@ def sync(
         raise typer.Exit(code=1) from err
 
     if not books:
-        console.print(f"No finished books found from {source}.", style="yellow")
+        console.print(f"No books to sync from {source}.", style="yellow")
         return
 
     if limit:
@@ -501,6 +535,7 @@ def sync(
                     store=store,
                     confirm_fn=_prompt_ambiguous,
                     edition_fn=searcher.resolve_edition,
+                    default_shelf=target,
                 )
                 review_outcome = (
                     run_review_sync(books, rater=client, store=store) if ratings else None

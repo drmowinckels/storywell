@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 
-from storywell.models import SourceBook
+from storywell.models import Shelf, SourceBook
 from storywell.storygraph.editions import Edition
 from storywell.storygraph.matching import (
     Candidate,
@@ -23,10 +23,11 @@ from storywell.storygraph.sync import (
     run_sync,
     run_title_sync,
     summarize,
+    target_shelf,
 )
 
 
-def _book(title, *authors, source_id="A", finished_at=None, media_format=""):
+def _book(title, *authors, source_id="A", finished_at=None, media_format="", status=Shelf.UNKNOWN):
     return SourceBook(
         source="audible",
         source_id=source_id,
@@ -34,6 +35,7 @@ def _book(title, *authors, source_id="A", finished_at=None, media_format=""):
         authors=tuple(authors),
         finished_at=finished_at,
         media_format=media_format,
+        status=status,
     )
 
 
@@ -42,8 +44,8 @@ class _FakeWriter:
         self.ok = ok
         self.calls = []
 
-    def mark_finished(self, book_id, finish_date=None):
-        self.calls.append((book_id, finish_date))
+    def mark_shelf(self, book_id, status, date=None):
+        self.calls.append((book_id, status, date))
         return self.ok
 
 
@@ -133,8 +135,8 @@ def test_run_sync_writes_high_confidence_match(tmp_path):
         store=store,
     )
     assert outcome.written == ["audible:A1"]
-    assert writer.calls == [("b1", date(2023, 8, 18))]
-    assert store.is_synced("audible:A1", date(2023, 8, 18)) is True
+    assert writer.calls == [("b1", Shelf.READ, date(2023, 8, 18))]
+    assert store.is_synced("audible:A1", date(2023, 8, 18), Shelf.READ.value) is True
 
 
 def test_run_sync_skips_already_synced(tmp_path):
@@ -159,7 +161,7 @@ def test_run_sync_uses_cached_book_id_without_searching(tmp_path):
     writer = _FakeWriter()
     outcome = run_sync([_book("X", source_id="A1")], search_fn=search, writer=writer, store=store)
     assert searched == []
-    assert writer.calls == [("bX", None)]
+    assert writer.calls == [("bX", Shelf.READ, None)]
     assert outcome.written == ["audible:A1"]
 
 
@@ -241,7 +243,7 @@ def test_run_sync_marks_the_audio_edition_for_an_audiobook_source(tmp_path):
         edition_fn=resolver,
     )
     assert resolver.calls == [("b1", "audio")]
-    assert writer.calls == [("audio-ed", None)]
+    assert writer.calls == [("audio-ed", Shelf.READ, None)]
     assert outcome.written == ["audible:A1"]
     assert store.cached_book_id("audible:A1") == "audio-ed"
 
@@ -256,7 +258,7 @@ def test_run_sync_falls_back_to_best_match_when_no_audio_edition(tmp_path):
         store=_store(tmp_path),
         edition_fn=resolver,
     )
-    assert writer.calls == [("b1", None)]
+    assert writer.calls == [("b1", Shelf.READ, None)]
 
 
 def test_run_sync_skips_edition_resolution_without_media_format(tmp_path):
@@ -270,7 +272,7 @@ def test_run_sync_skips_edition_resolution_without_media_format(tmp_path):
         edition_fn=resolver,
     )
     assert resolver.calls == []
-    assert writer.calls == [("b1", None)]
+    assert writer.calls == [("b1", Shelf.READ, None)]
 
 
 def test_run_sync_does_not_re_resolve_cached_edition(tmp_path):
@@ -286,7 +288,113 @@ def test_run_sync_does_not_re_resolve_cached_edition(tmp_path):
         edition_fn=resolver,
     )
     assert resolver.calls == []
-    assert writer.calls == [("audio-ed", None)]
+    assert writer.calls == [("audio-ed", Shelf.READ, None)]
+
+
+# --- shelf routing ----------------------------------------------------------------------
+
+
+def test_target_shelf_finished_signal_wins():
+    finished = _book("X", finished_at=datetime(2023, 8, 18, tzinfo=UTC))
+    assert target_shelf(finished, default_shelf=Shelf.TO_READ) is Shelf.READ
+    flagged = SourceBook(source="s", source_id="1", title="X", is_finished=True)
+    assert target_shelf(flagged, default_shelf=Shelf.TO_READ) is Shelf.READ
+
+
+def test_target_shelf_uses_declared_status_when_not_finished():
+    book = _book("X", status=Shelf.CURRENTLY_READING)
+    assert target_shelf(book, default_shelf=None) is Shelf.CURRENTLY_READING
+    # an explicit status beats the caller's default
+    assert target_shelf(book, default_shelf=Shelf.TO_READ) is Shelf.CURRENTLY_READING
+
+
+def test_target_shelf_falls_back_to_default_shelf():
+    book = _book("X")  # unfinished, status unknown
+    assert target_shelf(book, default_shelf=Shelf.TO_READ) is Shelf.TO_READ
+
+
+def test_target_shelf_defaults_to_read_without_default_shelf():
+    # legacy behaviour: a surfaced book with no other signal is read.
+    assert target_shelf(_book("X"), default_shelf=None) is Shelf.READ
+
+
+def test_run_sync_routes_unfinished_book_to_default_shelf(tmp_path):
+    writer = _FakeWriter()
+    store = _store(tmp_path)
+    outcome = run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1")],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=store,
+        default_shelf=Shelf.TO_READ,
+    )
+    assert writer.calls == [("b1", Shelf.TO_READ, None)]
+    assert outcome.written == ["audible:A1"]
+    # dateless shelf is keyed on the shelf, not an empty date
+    assert store.is_synced("audible:A1", None, Shelf.TO_READ.value) is True
+
+
+def test_run_sync_routes_declared_status_over_default(tmp_path):
+    writer = _FakeWriter()
+    outcome = run_sync(
+        [_book("Hyperion", "Dan Simmons", source_id="A1", status=Shelf.CURRENTLY_READING)],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=_store(tmp_path),
+        default_shelf=Shelf.TO_READ,
+    )
+    assert writer.calls == [("b1", Shelf.CURRENTLY_READING, None)]
+    assert outcome.written == ["audible:A1"]
+
+
+def test_run_sync_finished_book_ignores_default_shelf(tmp_path):
+    writer = _FakeWriter()
+    outcome = run_sync(
+        [
+            _book(
+                "Hyperion",
+                "Dan Simmons",
+                source_id="A1",
+                finished_at=datetime(2023, 8, 18, tzinfo=UTC),
+            )
+        ],
+        search_fn=lambda q: [Candidate("b1", "Hyperion", "Dan Simmons")],
+        writer=writer,
+        store=_store(tmp_path),
+        default_shelf=Shelf.TO_READ,
+    )
+    assert writer.calls == [("b1", Shelf.READ, date(2023, 8, 18))]
+    assert outcome.written == ["audible:A1"]
+
+
+def test_run_sync_skips_already_synced_dateless_shelf(tmp_path):
+    store = _store(tmp_path)
+    store.record("audible:A1", "b1", None, Shelf.TO_READ.value)
+    writer = _FakeWriter()
+    outcome = run_sync(
+        [_book("X", source_id="A1")],
+        search_fn=lambda q: [],
+        writer=writer,
+        store=store,
+        default_shelf=Shelf.TO_READ,
+    )
+    assert outcome.skipped_synced == ["audible:A1"]
+    assert writer.calls == []
+
+
+def test_run_sync_re_syncs_when_shelf_changes(tmp_path):
+    store = _store(tmp_path)
+    store.record("audible:A1", "b1", None, Shelf.TO_READ.value)
+    writer = _FakeWriter()
+    outcome = run_sync(
+        [_book("X", source_id="A1", status=Shelf.CURRENTLY_READING)],
+        search_fn=lambda q: [],
+        writer=writer,
+        store=store,
+    )
+    # the same book moved to a different shelf is not "already synced"
+    assert outcome.written == ["audible:A1"]
+    assert writer.calls == [("b1", Shelf.CURRENTLY_READING, None)]
 
 
 def test_run_sync_records_failure(tmp_path):
@@ -310,7 +418,7 @@ def test_run_title_sync_writes_each_title(tmp_path):
         store=_store(tmp_path),
     )
     assert outcome.written == ["audible:c::emma"]
-    assert writer.calls == [("b1", date(2020, 1, 1))]
+    assert writer.calls == [("b1", Shelf.READ, date(2020, 1, 1))]
 
 
 def test_run_title_sync_skips_already_synced(tmp_path):
@@ -335,7 +443,7 @@ def test_run_title_sync_marks_audio_edition_when_entry_has_format(tmp_path):
         edition_fn=resolver,
     )
     assert resolver.calls == [("b1", "audio")]
-    assert writer.calls == [("audio-ed", None)]
+    assert writer.calls == [("audio-ed", Shelf.READ, None)]
     assert outcome.written == ["audible:c::emma"]
 
 
@@ -458,7 +566,7 @@ class _RaisingWriter:
         self.exc = exc
         self.calls = 0
 
-    def mark_finished(self, book_id, finish_date=None):
+    def mark_shelf(self, book_id, status, date=None):
         self.calls += 1
         raise self.exc
 
@@ -473,7 +581,7 @@ def test_run_sync_one_book_failure_does_not_abort_batch(tmp_path):
         def __init__(self):
             self.calls = []
 
-        def mark_finished(self, book_id, finish_date=None):
+        def mark_shelf(self, book_id, status, date=None):
             self.calls.append(book_id)
             if book_id == "boom":
                 raise RuntimeError("transient browser error")
@@ -488,7 +596,7 @@ def test_run_sync_one_book_failure_does_not_abort_batch(tmp_path):
     outcome = run_sync(books, search_fn=search, writer=_FlakyWriter(), store=store)
     assert outcome.failed == ["audible:A1"]
     assert outcome.written == ["audible:A2"]
-    assert store.is_synced("audible:A2", None) is True
+    assert store.is_synced("audible:A2", None, Shelf.READ.value) is True
 
 
 def test_run_sync_reraises_auth_error(tmp_path):
@@ -548,7 +656,7 @@ def test_run_title_sync_one_book_failure_does_not_abort_batch(tmp_path):
     ]
 
     class _FlakyWriter:
-        def mark_finished(self, book_id, finish_date=None):
+        def mark_shelf(self, book_id, status, date=None):
             if book_id == "boom":
                 raise RuntimeError("transient")
             return True

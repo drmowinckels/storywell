@@ -12,7 +12,7 @@ import csv
 import io
 from pathlib import Path
 
-from ..models import SourceBook
+from ..models import WRITABLE_SHELVES, Shelf, SourceBook
 from .base import SourceError
 
 # Goodreads (and some others) write ISBNs as an Excel-safe formula: ="9780...". Strip the
@@ -99,12 +99,17 @@ class CsvSource:
         return read_rows(self.path)
 
     def finished_books(self, *, threshold: float = 0.95) -> list[SourceBook]:
+        """The books this source wants synced: those it flagged finished, those clearing the
+        percent threshold, and (for shelf-routing sources) those it routed to a writable
+        non-``read`` shelf via ``status``. A row with no finished signal and no declared
+        shelf is dropped, so a plain catalogue stays empty unless the source opts books in."""
         cutoff = threshold * 100.0
         finished: list[SourceBook] = []
         for row in self._rows():
             book = self.row_to_book(row)
             if book is None:
                 continue
-            if book.is_finished or book.percent_complete >= cutoff:
+            routed = book.status in WRITABLE_SHELVES and book.status is not Shelf.READ
+            if book.is_finished or book.percent_complete >= cutoff or routed:
                 finished.append(book)
         return finished

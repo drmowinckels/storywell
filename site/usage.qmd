@@ -93,8 +93,9 @@ storywell storygraph-status
 | `--profile` | audible | primary | `audible-cli` profile name. |
 | `--file`, `-f` | goodreads, librarything, kobo | — | Path to the export CSV / SQLite database. |
 | `--token` | hardcover | `$HARDCOVER_TOKEN` | Hardcover personal API token. |
-| `--as-read` | librarything | off | Treat every catalogued book as read (it's a catalogue, not a read tracker). |
-| `--read-date` | librarything | off | Stamp today's date as the finish date for `--as-read` books with no Date Read. |
+| `--shelf` | sync, list | read-only | Route books with no finished signal to a StoryGraph shelf (`read`, `currently-reading`, `to-read`, `did-not-finish`). Finished books always go to `read`. Omit to stay read-only. For a catalogue source like LibraryThing this routes the whole catalogue; `--shelf read` is the modern spelling of `--as-read`. |
+| `--as-read` | librarything | off | Legacy alias for `--shelf read` (treat every catalogued book as read). |
+| `--read-date` | librarything | off | Stamp today's date as the finish date for read books with no Date Read. |
 | `--collection` | librarything | all | Only import books in this collection (repeatable; omit for all). |
 | `--dry-run` / `--no-dry-run` | sync, collections | see below | Preview without writing. `sync` defaults to writing; `collections` defaults to dry-run. |
 | `--limit` | sync, retag | `0` (all) | Process at most N books. |

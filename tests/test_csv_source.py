@@ -1,6 +1,6 @@
 import pytest
 
-from storywell.models import SourceBook
+from storywell.models import Shelf, SourceBook
 from storywell.sources.base import SourceError
 from storywell.sources.csv_source import CsvSource, read_rows, unwrap_isbn
 
@@ -101,3 +101,35 @@ def test_csv_source_applies_percent_threshold(tmp_path):
     source = _ShelfSource(path=csv_file)
     assert [b.source_id for b in source.finished_books(threshold=0.95)] == ["2"]
     assert {b.source_id for b in source.finished_books(threshold=0.90)} == {"1", "2"}
+
+
+class _RoutingSource(CsvSource):
+    """A source that routes unfinished rows to a chosen shelf (library-source pattern)."""
+
+    name = "routing"
+
+    def __init__(self, *, path=None, shelf=Shelf.UNKNOWN):
+        super().__init__(path=path)
+        self.shelf = shelf
+
+    def row_to_book(self, row):
+        return SourceBook(
+            source=self.name,
+            source_id=row["Id"],
+            title=row["Title"],
+            is_finished=row.get("Shelf") == "read",
+            status=Shelf.READ if row.get("Shelf") == "read" else self.shelf,
+        )
+
+
+def test_csv_source_includes_books_routed_to_a_non_read_shelf(tmp_path):
+    csv_file = _write(tmp_path, "Id,Title,Shelf\n1,Borrowed,loan\n2,Done,read\n")
+    # default (unknown shelf): only the finished one is surfaced
+    plain = _RoutingSource(path=csv_file).finished_books()
+    assert [b.source_id for b in plain] == ["2"]
+    # routed to to-read: the borrow is opted in too
+    routed = _RoutingSource(path=csv_file, shelf=Shelf.TO_READ).finished_books()
+    assert sorted(b.source_id for b in routed) == ["1", "2"]
+    by_id = {b.source_id: b for b in routed}
+    assert by_id["1"].status is Shelf.TO_READ
+    assert by_id["2"].status is Shelf.READ
