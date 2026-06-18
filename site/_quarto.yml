@@ -4,6 +4,7 @@ project:
   pre-render: build_dashboard.py
   resources:
     - assets/dashboard
+    - dashboard.js
 
 website:
   title: "Storywell"
