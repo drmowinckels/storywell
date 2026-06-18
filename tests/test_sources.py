@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 import pytest
 
 from storywell.models import SourceBook
@@ -39,3 +42,23 @@ def test_source_book_key_namespaces_by_source():
 def test_audible_source_declares_audio_format():
     assert AudibleSource.media_format == "audio"
     assert make_source("audible").media_format == "audio"
+
+
+def test_importing_stats_does_not_pull_in_the_audible_sdk():
+    # The stats CSV reader lives under storywell.sources but must stay light enough to
+    # run under Pyodide in the browser, where the Audible SDK can't be installed. Run in a
+    # fresh interpreter so earlier tests' imports don't mask a regression.
+    code = (
+        "import sys, storywell.stats.export\n"
+        "assert 'storywell.sources.audible' not in sys.modules, 'audible source imported'\n"
+        "assert 'audible' not in sys.modules, 'audible SDK imported'\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_unknown_attribute_raises_attribute_error():
+    import storywell.sources as sources
+
+    missing = "NopeSource"
+    with pytest.raises(AttributeError):
+        getattr(sources, missing)
