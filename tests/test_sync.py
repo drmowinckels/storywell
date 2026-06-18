@@ -139,6 +139,40 @@ def test_run_sync_writes_high_confidence_match(tmp_path):
     assert store.is_synced("audible:A1", date(2023, 8, 18), Shelf.READ.value) is True
 
 
+def test_run_sync_dedupes_same_book_across_sources(tmp_path):
+    shared_isbn = "978-0-441-17271-9"
+    books = [
+        SourceBook(
+            source="audible",
+            source_id="A1",
+            title="Dune",
+            authors=("Frank Herbert",),
+            isbn13=shared_isbn,
+        ),
+        SourceBook(
+            source="kobo",
+            source_id="K9",
+            title="Dune",
+            authors=("Frank Herbert",),
+            isbn13=shared_isbn,
+            is_finished=True,
+            finished_at=datetime(2023, 8, 18, tzinfo=UTC),
+        ),
+    ]
+    writer = _FakeWriter()
+    store = _store(tmp_path)
+
+    outcome = run_sync(
+        books,
+        search_fn=lambda q: [Candidate("b1", "Dune", "Frank Herbert")],
+        writer=writer,
+        store=store,
+    )
+
+    assert outcome.written == ["kobo:K9"]  # only the winner is pushed, once
+    assert writer.calls == [("b1", date(2023, 8, 18))]
+
+
 def test_run_sync_skips_already_synced(tmp_path):
     store = _store(tmp_path)
     store.record("audible:A1", "b1", date(2023, 8, 18))

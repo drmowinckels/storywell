@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any, Protocol
 
 from ..models import WRITABLE_SHELVES, Shelf, SourceBook
+from .dedup import merge_duplicates
 from .editions import Edition, pick_edition
 from .matching import (
     Candidate,
@@ -205,7 +206,7 @@ def run_sync(
     every book it surfaced read exactly as before; a library source opts books onto another
     shelf by setting ``status`` (or the caller passes ``default_shelf``)."""
     outcome = SyncOutcome()
-    for book in books:
+    for book in merge_duplicates(books):
         try:
             shelf = target_shelf(book, default_shelf)
             finished_on = _finish_date(book) if shelf is Shelf.READ else None
