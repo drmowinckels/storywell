@@ -170,7 +170,7 @@ def test_run_sync_dedupes_same_book_across_sources(tmp_path):
     )
 
     assert outcome.written == ["kobo:K9"]  # only the winner is pushed, once
-    assert writer.calls == [("b1", date(2023, 8, 18))]
+    assert writer.calls == [("b1", Shelf.READ, date(2023, 8, 18))]
 
 
 def test_run_sync_skips_already_synced(tmp_path):
