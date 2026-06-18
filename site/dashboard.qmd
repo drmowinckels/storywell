@@ -48,8 +48,10 @@ rebuilt **entirely in your browser** — your library never leaves your device.
   .dash-loader{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:1rem 0 1.5rem}
   .dash-btn{
     display:inline-block;cursor:pointer;font-weight:600;padding:.55rem 1.1rem;border-radius:10px;
-    background:var(--bs-link-color,#b9742f);color:#fff;border:1px solid transparent;
+    background:#6f4a20;color:#fff;border:1px solid transparent;
   }
+  /* Dark mode: the brass accent is light, so flip to dark text on a light-brass button. */
+  .quarto-dark .dash-btn{background:#d8b06a;color:#15211a}
   .dash-btn:hover{filter:brightness(1.08)}
   .dash-status{color:var(--bs-body-color,#222);font-size:.92rem}
   .dash-status[data-kind="busy"]::before{content:"⏳ "}

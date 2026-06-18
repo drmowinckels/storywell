@@ -29,6 +29,7 @@ $code-block-bg: #e9e2d0;
 :root {
   --sw-ink: #20221d;
   --sw-brass: #9c6b34;
+  --sw-brass-text: #6f4a20; // AA-contrast brass for text on the light ground
   --sw-teal: #0e3a39;
 
   --sw-bg: #e4ddcc;
@@ -72,7 +73,7 @@ $code-block-bg: #e9e2d0;
   letter-spacing: 0.2em;
   font-size: 0.7rem;
   font-weight: 500;
-  color: var(--sw-brass);
+  color: var(--sw-brass-text);
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
@@ -84,6 +85,31 @@ $code-block-bg: #e9e2d0;
   height: 1px;
   background: var(--sw-brass);
   display: inline-block;
+}
+
+// Quarto's default light highlight theme dips just under AA on two token colours
+// (attributes ~4.0:1, strings ~4.2:1) against the code ground. Scope to light mode so
+// the dark highlight theme is untouched.
+.quarto-light code span.at {
+  color: #545c12;
+}
+.quarto-light code span.st {
+  color: #1a6340;
+}
+
+// Link colour per mode (the brand brass fails AA as link text in both grounds): a darker
+// brass on the light putty, the brighter night-brass on the dark ground.
+.quarto-light {
+  --bs-link-color: #6f4a20;
+  --bs-link-color-rgb: 111, 74, 32;
+  --bs-link-hover-color: #5a3c1a;
+  --bs-link-hover-color-rgb: 90, 60, 26;
+}
+.quarto-dark {
+  --bs-link-color: #d8b06a;
+  --bs-link-color-rgb: 216, 176, 106;
+  --bs-link-hover-color: #e7c489;
+  --bs-link-hover-color-rgb: 231, 196, 137;
 }
 
 .wordmark {
@@ -129,7 +155,7 @@ h4 {
 #quarto-header .navbar .nav-link:focus,
 #quarto-header .navbar .nav-link.active,
 #quarto-header .navbar .quarto-navigation-tool:hover {
-  color: var(--sw-brass) !important;
+  color: var(--sw-brass-text) !important;
 }
 .navbar-brand img {
   height: 2rem;
