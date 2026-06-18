@@ -106,9 +106,8 @@ def test_parse_authors_splits_on_ampersand():
 
 
 def test_parse_timestamp_tolerates_fractions_and_garbage():
-    assert parse_timestamp("2024-01-15T08:30:00.123456+00:00".split("+")[0]) == datetime(
-        2024, 1, 15, 8, 30, 0
-    )
+    assert parse_timestamp("2024-01-15T08:30:00.123456") == datetime(2024, 1, 15, 8, 30, 0)
+    assert parse_timestamp("2024-01-15T08:30:00Z") == datetime(2024, 1, 15, 8, 30, 0)
     assert parse_timestamp("2024-01-15 08:30:00") == datetime(2024, 1, 15, 8, 30, 0)
     assert parse_timestamp(None) is None
     assert parse_timestamp("not-a-date") is None
