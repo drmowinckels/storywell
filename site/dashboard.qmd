@@ -1,5 +1,6 @@
 ---
 title: "Your reading stats"
+description: "Turn your StoryGraph library export into a rich reading dashboard — built entirely in your browser, your data never leaves your device."
 toc: false
 ---
 
@@ -50,10 +51,10 @@ rebuilt **entirely in your browser** — your library never leaves your device.
     background:var(--bs-link-color,#b9742f);color:#fff;border:1px solid transparent;
   }
   .dash-btn:hover{filter:brightness(1.08)}
-  .dash-status{color:var(--bs-secondary-color,#6c757d);font-size:.92rem}
+  .dash-status{color:var(--bs-body-color,#222);font-size:.92rem}
   .dash-status[data-kind="busy"]::before{content:"⏳ "}
-  .dash-status[data-kind="ok"]{color:#2f8f5b}
-  .dash-status[data-kind="error"]{color:#c0392b}
+  .dash-status[data-kind="ok"]{color:var(--bs-success-text-emphasis,#157347)}
+  .dash-status[data-kind="error"]{color:var(--bs-danger-text-emphasis,#b02a37)}
   .dash-filters{display:flex;flex-wrap:wrap;gap:18px;margin:0 0 1.25rem}
   .dash-filters label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.92rem}
   .dash-filters select{

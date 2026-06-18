@@ -22,8 +22,12 @@ color:
 
 logo:
   images:
-    mark-day: submark.svg
-    mark-night: submark-night.svg
+    mark-day:
+      path: submark.svg
+      alt: Storywell
+    mark-night:
+      path: submark-night.svg
+      alt: Storywell
   small:
     light: mark-day
     dark: mark-night
