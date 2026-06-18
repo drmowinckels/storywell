@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from storywell.cli import (
@@ -32,13 +33,13 @@ def test_parse_shelf_explicit_value_wins():
 
 
 def test_parse_shelf_rejects_unknown_shelf():
-    with pytest.raises(SystemExit):
+    with pytest.raises(typer.Exit):
         _parse_shelf("favourites", as_read=False)
 
 
 def test_parse_shelf_rejects_unknown_status():
     # 'unknown' is a real Shelf value but not a writable target shelf
-    with pytest.raises(SystemExit):
+    with pytest.raises(typer.Exit):
         _parse_shelf("unknown", as_read=False)
 
 
@@ -269,11 +270,11 @@ def test_cli_sync_aborts_and_saves_on_session_expiry(monkeypatch, tmp_path):
     assert (tmp_path / "store.json").exists()  # progress persisted via finally
 
 
-def test_cli_sync_no_finished_books(monkeypatch):
+def test_cli_sync_no_books_to_sync(monkeypatch):
     monkeypatch.setattr("storywell.cli._load_finished", lambda *a, **k: [])
     result = runner.invoke(app, ["sync"])
     assert result.exit_code == 0
-    assert "No finished books" in result.stdout
+    assert "No books to sync" in result.stdout
 
 
 def test_cli_sync_requires_session(monkeypatch):
