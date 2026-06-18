@@ -1,3 +1,4 @@
+from .dedup import identity_key, merge_duplicates
 from .matching import Candidate, MatchResult, MatchStatus, is_isbn, match_book
 from .session import (
     StorygraphAuthError,
@@ -37,12 +38,14 @@ __all__ = [
     "SyncPlanItem",
     "SyncStore",
     "TitleEntry",
+    "identity_key",
     "is_authenticated",
     "is_isbn",
     "isbn_query",
     "login",
     "match_book",
     "match_for_book",
+    "merge_duplicates",
     "plan_retag",
     "plan_sync",
     "query_for",
