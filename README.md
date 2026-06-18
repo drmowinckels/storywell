@@ -101,6 +101,7 @@ The full command and flag reference lives in the [docs](https://drmowinckels.git
 | Source         | Format | Input                                                                              | Flags                                                           |
 | -------------- | ------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `audible`      | audio  | `audible-cli` registration (`audible quickstart`)                                  | `--auth-file`, `--profile`                                      |
+| `calibre`      | ebook  | local Calibre library `metadata.db`                                                | `--file`, `--read-column`                                       |
 | `goodreads`    | mixed  | `goodreads_library_export.csv` (Settings → Export)                                 | `--file`                                                        |
 | `kobo`         | ebook  | on-device `KoboReader.sqlite`                                                      | `--file`                                                        |
 | `librarything` | mixed  | CSV/JSON export                                                                    | `--file`, `--shelf`, `--as-read`, `--read-date`, `--collection` |
@@ -111,6 +112,10 @@ The Audible source reads `~/.audible/config.toml` to find the active profile's a
 LibraryThing is a catalogue, not a read tracker — by default nothing counts as read; `--as-read`
 treats every catalogued book as read, `--read-date` stamps today's date, and `--collection NAME`
 (repeatable) scopes to a named collection like "Read".
+Calibre has no built-in read field, so it needs `--read-column LABEL` naming the custom column you
+use to track read status (a Yes/No, rating, or text column); a book counts as finished when that
+column is truthy. Point `--file` at the library folder or the `metadata.db` inside it; the database
+is opened read-only.
 
 **Experimental sources — read before trusting a run:**
 
@@ -132,6 +137,7 @@ Per-source setup and caveats are documented in full in the
 - [x] Multi-source architecture (`--source`, pluggable provider registry, ISBN-first matching)
 - [x] Goodreads source (CSV export → StoryGraph)
 - [x] Kobo source (on-device `KoboReader.sqlite`)
+- [x] Calibre source (local library `metadata.db`, custom read column)
 - [x] LibraryThing source (CSV/JSON export) — _experimental_
 - [x] Hardcover source (GraphQL) — _experimental_
 - [x] Ratings & reviews sync, audio-edition tagging
