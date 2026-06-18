@@ -2,6 +2,8 @@
 // we run the real storywell.stats Python pipeline in Pyodide (WASM) and render the same
 // dashboard the CLI produces — entirely client-side. The CSV is read with the File API and
 // never uploaded anywhere; only the Python runtime and the storywell wheel come from the CDN.
+// Once loaded, the parsed entries are cached in Pyodide so the year/format filters re-render
+// without re-reading the file.
 (() => {
   const PYODIDE_VERSION = "0.29.4";
   const PYODIDE_BASE = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`;
@@ -9,9 +11,13 @@
   const fileInput = document.getElementById("storywell-file");
   const statusEl = document.getElementById("storywell-status");
   const frame = document.getElementById("storywell-dash");
+  const filterBar = document.getElementById("storywell-filters");
+  const yearSel = document.getElementById("storywell-year");
+  const formatSel = document.getElementById("storywell-format");
   if (!fileInput || !frame || !statusEl) return;
 
   let pyodidePromise = null;
+  let renderFn = null; // Python _render(year, fmt) proxy, set once a library is loaded
 
   function setStatus(message, kind) {
     statusEl.textContent = message;
@@ -52,37 +58,80 @@ await micropip.install(wheel_url, deps=False)
     return pyodidePromise;
   }
 
-  const RENDER_PY = `
+  // Parse the export, cache the entries, and define _render(year, fmt) for the filters.
+  const SETUP_PY = `
 import json
 from storywell.stats import load_export, compute_all
 from storywell.stats.render import render_dashboard
+
+def _render(year, fmt):
+    rows = _entries
+    if year is not None:
+        rows = [e for e in rows if any(i.finished_year == year for i in e.read_instances)]
+    if fmt:
+        rows = [e for e in rows if (e.media_format or "unknown") == fmt]
+    return render_dashboard(compute_all(rows), title="Your reading stats")
+
 try:
-    _data = compute_all(load_export("/export.csv"))
-    _out = {"ok": True, "html": render_dashboard(_data, title="Your reading stats")}
+    _entries = load_export("/export.csv")
+    _years = sorted(
+        {i.finished_year for e in _entries for i in e.read_instances if i.finished_year is not None},
+        reverse=True,
+    )
+    _formats = sorted({(e.media_format or "unknown") for e in _entries if e.is_read})
+    _out = {"ok": True, "years": _years, "formats": _formats}
 except Exception as exc:
     _out = {"ok": False, "error": str(exc)}
 json.dumps(_out)
 `;
 
-  async function renderCsv(text) {
+  function option(value, label) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    return opt;
+  }
+
+  function buildFilters(meta) {
+    if (!filterBar || !yearSel || !formatSel) return;
+    yearSel.replaceChildren(option("", "All years"));
+    meta.years.forEach((y) => yearSel.appendChild(option(String(y), String(y))));
+    formatSel.replaceChildren(option("", "All formats"));
+    meta.formats.forEach((f) => formatSel.appendChild(option(f, f)));
+    filterBar.hidden = false;
+  }
+
+  function applyFilters() {
+    if (!renderFn) return;
+    const year = yearSel && yearSel.value ? Number(yearSel.value) : null;
+    const fmt = (formatSel && formatSel.value) || null;
+    frame.removeAttribute("src");
+    frame.srcdoc = renderFn(year, fmt);
+  }
+
+  async function loadLibrary(text) {
     const pyodide = await ensurePyodide();
     setStatus("Building your dashboard…", "busy");
     pyodide.FS.writeFile("/export.csv", text, { encoding: "utf8" });
-    const result = JSON.parse(pyodide.runPython(RENDER_PY));
-    if (!result.ok) {
-      setStatus(result.error || "That file didn't look like a StoryGraph export.", "error");
+    const meta = JSON.parse(await pyodide.runPythonAsync(SETUP_PY));
+    if (!meta.ok) {
+      setStatus(meta.error || "That file didn't look like a StoryGraph export.", "error");
       return;
     }
-    frame.removeAttribute("src");
-    frame.srcdoc = result.html;
+    renderFn = pyodide.globals.get("_render");
+    buildFilters(meta);
+    applyFilters();
     setStatus("Showing your library — it never left your browser.", "ok");
   }
+
+  if (yearSel) yearSel.addEventListener("change", applyFilters);
+  if (formatSel) formatSel.addEventListener("change", applyFilters);
 
   fileInput.addEventListener("change", async (event) => {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     try {
-      await renderCsv(await file.text());
+      await loadLibrary(await file.text());
     } catch (err) {
       setStatus(`Something went wrong: ${err.message}`, "error");
     } finally {
