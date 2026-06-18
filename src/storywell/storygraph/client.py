@@ -1,14 +1,18 @@
-"""StoryGraph write client (mark as read + finish date).
+"""StoryGraph write client (route a book to a shelf + finish date).
 
 Selectors/flow verified against the live StoryGraph DOM (2026-06-15):
-- a book page exposes ``.read-status-label`` (current status text) and a Rails form
-  ``form[action*='/update-status'][action*='status=read']`` to set status to read;
+- a book page exposes ``.read-status-label`` (current status text) and one Rails form
+  per status, ``form[action*='/update-status'][action*='status=<slug>']``, to set that
+  status (``read`` was the one originally mapped; the other shelves reuse the same form
+  shape with their own status slug);
 - the finish date is added on ``/read_instances/new?book_id={id}`` via selects
   ``new_read_instance[day|month|year]`` (numeric values) submitted to POST
   ``/read_instances``.
 
-The pure ``date_fields`` helper is unit-tested; the browser flow is covered with a
-mocked page.
+The pure helpers (``date_fields``, ``status_form_selector``, ``expected_label``) are
+unit-tested; the browser flow is covered with a mocked page. The non-``read`` shelf forms
+share the ``read`` form's structure but have not been exercised against a live
+authenticated session — see the PR's manual verification note.
 """
 
 from __future__ import annotations
@@ -18,10 +22,33 @@ from datetime import date
 from pathlib import Path
 
 from ..config import storygraph_state_path
+from ..models import Shelf
 from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright, raise_if_signed_out
 
 READ_STATUS_LABEL_SELECTOR = ".read-status-label"
-STATUS_READ_FORM_SELECTOR = "form[action*='/update-status'][action*='status=read']"
+
+
+def status_form_selector(status: Shelf | str) -> str:
+    """The update-status form selector for a shelf, parameterised on its StoryGraph slug.
+
+    Mirrors the verified ``read`` form; the slug is StoryGraph's own status value (``Shelf`` is
+    a ``StrEnum``, so ``str`` is the slug), so it drops straight into the ``status=`` action
+    segment for every shelf."""
+    return f"form[action*='/update-status'][action*='status={status}']"
+
+
+# Kept for back-compat with code/tests that import the read form selector by name.
+STATUS_READ_FORM_SELECTOR = status_form_selector(Shelf.READ)
+
+
+def expected_label(status: Shelf | str) -> str:
+    """The ``.read-status-label`` text StoryGraph shows once a shelf is set (lower-cased).
+
+    StoryGraph renders the status with a space, not the hyphenated slug ("to read", not
+    "to-read"), so the post-write confirmation compares against this rather than the slug."""
+    return str(status).replace("-", " ")
+
+
 READ_INSTANCE_NEW_PATH = "/read_instances/new"
 DATE_DAY_SELECTOR = "select[name='new_read_instance[day]']"
 DATE_MONTH_SELECTOR = "select[name='new_read_instance[month]']"
@@ -45,7 +72,7 @@ def date_fields(value: date) -> dict[str, str]:
 
 
 class StorygraphClient:
-    """Reusable authenticated browser session for marking books finished."""
+    """Reusable authenticated browser session for routing books to StoryGraph shelves."""
 
     def __init__(
         self,
@@ -98,24 +125,40 @@ class StorygraphClient:
         label = page.query_selector(READ_STATUS_LABEL_SELECTOR)
         return label.inner_text().strip().lower() if label else None
 
-    def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool:
-        if self.current_status(book_id) == "read":
+    def mark_shelf(self, book_id: str, status: Shelf | str, date: date | None = None) -> bool:
+        """Route a book to a StoryGraph shelf, idempotently.
+
+        ``read`` keeps the original behaviour: a finish ``date`` is added via the dated-read
+        flow (which both records the read and sets the status), and a dateless ``read`` falls
+        back to the status form. Every other shelf is dateless — only StoryGraph's ``read``
+        status carries read instances — so the ``date`` is ignored and the status form is
+        submitted directly. Returns True only after the page's status label confirms the
+        write landed; a silently-rejected submit reports False so it is never recorded as
+        synced (and is retried on the next run)."""
+        target = status if isinstance(status, Shelf) else Shelf(status)
+        want = expected_label(target)
+        if self.current_status(book_id) == want:
             return True
-        # A dated read instance both records the read and sets status to "read",
-        # so when we have a date we add only that (one instance, correct date).
-        # Setting status separately would auto-create a second instance dated today.
-        if finish_date is not None:
-            submitted = self._add_dated_read(book_id, finish_date)
+        # A dated read instance both records the read and sets status to "read", so when we
+        # have a date (read only) we add only that (one instance, correct date). Setting
+        # status separately would auto-create a second instance dated today.
+        if target is Shelf.READ and date is not None:
+            submitted = self._add_dated_read(book_id, date)
         else:
-            submitted = self._set_status_read()
+            submitted = self._set_status(target)
         if not submitted:
             return False
         # Confirm the write actually landed; a silently-rejected submit must not be
         # recorded as synced (it would be skipped forever on idempotent re-runs).
-        return self.current_status(book_id) == "read"
+        return self.current_status(book_id) == want
 
-    def _set_status_read(self) -> bool:
-        form = self._page.query_selector(STATUS_READ_FORM_SELECTOR)
+    def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool:
+        """Mark a book read. Thin alias over ``mark_shelf`` kept for the read-only callers
+        (``run_title_sync``, the collections flow) that only ever route to ``read``."""
+        return self.mark_shelf(book_id, Shelf.READ, finish_date)
+
+    def _set_status(self, status: Shelf) -> bool:
+        form = self._page.query_selector(status_form_selector(status))
         if form is None:
             return False
         form.evaluate("f => f.requestSubmit()")

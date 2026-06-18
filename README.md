@@ -77,8 +77,11 @@ Common options:
   (default `0.95`), in addition to anything the source itself flags complete.
 - `--file, -f` — export CSV / database path for file sources (goodreads, librarything, kobo).
 - `--token` — personal API token for `hardcover` (or set `HARDCOVER_TOKEN`).
+- `--shelf <status>` — route books with no finished signal to a StoryGraph shelf (`read`,
+  `currently-reading`, `to-read`, `did-not-finish`); finished books always go to `read`. Omit to
+  stay read-only, so read-trackers are unaffected.
 - `--as-read`, `--read-date`, `--collection` — LibraryThing-only knobs (it's a catalogue, not a
-  read tracker); see [Sources](#sources).
+  read tracker); `--as-read` is the legacy alias for `--shelf read`. See [Sources](#sources).
 - `--dry-run` (sync) / `--no-dry-run` (collections) — preview vs write.
 - `--limit N`, `--no-ratings`, `--headed` — process at most N books, skip ratings/reviews, or watch
   the browser work.
@@ -95,13 +98,13 @@ The full command and flag reference lives in the [docs](https://drmowinckels.git
 
 ## Sources
 
-| Source         | Format | Input                                                                              | Flags                                                |
-| -------------- | ------ | ---------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `audible`      | audio  | `audible-cli` registration (`audible quickstart`)                                  | `--auth-file`, `--profile`                           |
-| `goodreads`    | mixed  | `goodreads_library_export.csv` (Settings → Export)                                 | `--file`                                             |
-| `kobo`         | ebook  | on-device `KoboReader.sqlite`                                                      | `--file`                                             |
-| `librarything` | mixed  | CSV/JSON export                                                                    | `--file`, `--as-read`, `--read-date`, `--collection` |
-| `hardcover`    | mixed  | GraphQL API token ([hardcover.app/account/api](https://hardcover.app/account/api)) | `--token`                                            |
+| Source         | Format | Input                                                                              | Flags                                                           |
+| -------------- | ------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `audible`      | audio  | `audible-cli` registration (`audible quickstart`)                                  | `--auth-file`, `--profile`                                      |
+| `goodreads`    | mixed  | `goodreads_library_export.csv` (Settings → Export)                                 | `--file`                                                        |
+| `kobo`         | ebook  | on-device `KoboReader.sqlite`                                                      | `--file`                                                        |
+| `librarything` | mixed  | CSV/JSON export                                                                    | `--file`, `--shelf`, `--as-read`, `--read-date`, `--collection` |
+| `hardcover`    | mixed  | GraphQL API token ([hardcover.app/account/api](https://hardcover.app/account/api)) | `--token`                                                       |
 
 The Audible source reads `~/.audible/config.toml` to find the active profile's auth file; pass
 `--profile <name>` for a non-default profile or `--auth-file <path>` to bypass discovery.

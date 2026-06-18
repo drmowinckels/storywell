@@ -2,13 +2,17 @@
 
 LibraryThing is a *catalogue*, not a read-status tracker: a typical export lists every book
 in "Your library" (and any custom collections) with no read flag and no Date Read. So this
-source reports the catalogue and lets the caller decide what counts as read:
+source reports the catalogue and lets the caller decide what shelf each book lands on:
 
 * default: only books LibraryThing actually flags read count as finished — a "Read"-style
   collection or a real ``Date Read``. For a pure catalogue that is usually none.
-* ``mark_read=True`` (CLI ``--as-read``): treat every reported book as read.
+* ``shelf=Shelf.READ`` (CLI ``--shelf read``, or the legacy ``--as-read``): route every
+  catalogued book to ``read``.
+* ``shelf=Shelf.TO_READ`` / ``CURRENTLY_READING`` / ``DID_NOT_FINISH`` (CLI ``--shelf ...``):
+  route every catalogued book to that shelf instead — books LibraryThing already flags read
+  still go to ``read`` (a finished signal always wins).
 * ``read_date=True`` (CLI ``--read-date``): stamp ``today`` as a placeholder finish date on
-  read books that have no real ``Date Read``.
+  read books that have no real ``Date Read`` (only meaningful for the ``read`` shelf).
 * ``collections=(...)`` (CLI ``--collection``, repeatable): only import books that belong to
   one of the named collections (case-insensitive). Omitted = the whole catalogue. This is how
   the user scopes a sync to e.g. a custom "Read" or "Favorites" collection.
@@ -35,7 +39,7 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
-from ..models import SourceBook
+from ..models import Shelf, SourceBook
 from .base import SourceError
 from .csv_source import CsvSource, read_rows
 
@@ -159,9 +163,11 @@ def json_rows(path: Path) -> list[dict[str, str]]:
 class LibraryThingSource(CsvSource):
     """Reports catalogued books from a LibraryThing export (EXPERIMENTAL).
 
-    ``mark_read`` treats every reported book as read; ``read_date`` stamps ``today`` on
-    read-but-undated books; ``collections`` restricts the import to named collections.
-    ``today`` is injectable for deterministic tests.
+    ``shelf`` routes every catalogued book to a StoryGraph shelf (``read`` reproduces the old
+    ``--as-read``; ``to-read`` / ``currently-reading`` / ``did-not-finish`` route the catalogue
+    there instead). ``mark_read`` is the legacy boolean alias for ``shelf=Shelf.READ``.
+    ``read_date`` stamps ``today`` on read-but-undated books; ``collections`` restricts the
+    import to named collections. ``today`` is injectable for deterministic tests.
     """
 
     name = SOURCE_NAME
@@ -170,13 +176,17 @@ class LibraryThingSource(CsvSource):
         self,
         *,
         path=None,
+        shelf: Shelf | str | None = None,
         mark_read: bool = False,
         read_date: bool = False,
         collections: tuple[str, ...] = (),
         today: date | None = None,
     ):
         super().__init__(path=path)
-        self.mark_read = mark_read
+        # mark_read is the legacy --as-read alias; --shelf read is the modern spelling.
+        if shelf is None and mark_read:
+            shelf = Shelf.READ
+        self.shelf = Shelf(shelf) if shelf is not None else None
         self.read_date = read_date
         self.collections = tuple(c.strip().lower() for c in collections if c and c.strip())
         self._today = today or date.today()
@@ -205,7 +215,11 @@ class LibraryThingSource(CsvSource):
         explicit_read = explicit_date is not None or any(
             _READ_COLLECTION.match(name) for name in book_collections
         )
-        is_finished = explicit_read or self.mark_read
+        # A finished signal always wins (-> read); otherwise the catalogue is routed to the
+        # requested shelf (or stays unknown/unsynced when no shelf was requested).
+        route_to_read = explicit_read or self.shelf is Shelf.READ
+        is_finished = route_to_read
+        status = Shelf.READ if route_to_read else (self.shelf or Shelf.UNKNOWN)
         finished_at = explicit_date
         if is_finished and finished_at is None and self.read_date:
             finished_at = datetime.combine(self._today, datetime.min.time())
@@ -217,6 +231,7 @@ class LibraryThingSource(CsvSource):
             authors=authors,
             finished_at=finished_at,
             is_finished=is_finished,
+            status=status,
             rating=parse_rating(_pick(row, _HEADERS["rating"])),
             review=_pick(row, _HEADERS["review"]),
             isbn=isbn,

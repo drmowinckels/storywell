@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Protocol
 
-from ..models import SourceBook
+from ..models import WRITABLE_SHELVES, Shelf, SourceBook
 from .editions import Edition, pick_edition
 from .matching import (
     Candidate,
@@ -27,7 +27,7 @@ EditionsFn = Callable[[str], list[Edition]]
 
 
 class Writer(Protocol):
-    def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool: ...
+    def mark_shelf(self, book_id: str, status: Shelf | str, date: date | None = None) -> bool: ...
 
 
 class Rater(Protocol):
@@ -145,6 +145,28 @@ def _finish_date(book: SourceBook) -> date | None:
     return book.finished_at.date() if book.finished_at else None
 
 
+def target_shelf(book: SourceBook, default_shelf: Shelf | None) -> Shelf:
+    """Route a book to the StoryGraph shelf it should land on.
+
+    The finished signal is a router, not a gate, with this precedence:
+
+    1. a finished signal (``is_finished`` or a finish date) always wins -> ``read``;
+    2. otherwise the book's own declared ``status`` when the source set a writable one
+       (this is the per-source opt-in: a library source tags each book's shelf);
+    3. otherwise the caller's ``default_shelf`` (the CLI ``--shelf`` target);
+    4. otherwise ``read`` — the legacy default, so a read-tracker run with no ``--shelf``
+       marks every book it surfaced read exactly as before (including books it included by
+       the percent threshold without stamping ``is_finished``).
+
+    Every book the source surfaced is therefore written somewhere; ``run_sync``'s ``books``
+    is already the source's filtered "to sync" list, so there is no skip case here."""
+    if book.is_finished or book.finished_at is not None:
+        return Shelf.READ
+    if book.status in WRITABLE_SHELVES:
+        return book.status
+    return default_shelf if default_shelf is not None else Shelf.READ
+
+
 def _effective_book_id(book_id: str, media_format: str, edition_fn: EditionFn | None) -> str:
     """Re-point a matched book to its format-specific edition (e.g. the audiobook one).
 
@@ -172,13 +194,22 @@ def run_sync(
     store: SyncStore,
     confirm_fn: ConfirmFn | None = None,
     edition_fn: EditionFn | None = None,
+    default_shelf: Shelf | None = None,
     dry_run: bool = False,
 ) -> SyncOutcome:
+    """Route each book to a StoryGraph shelf and write it (idempotently).
+
+    Each book is routed by ``target_shelf``: a finished signal always wins (-> ``read``),
+    then the book's declared ``status``, then ``default_shelf`` (the CLI ``--shelf`` target),
+    then ``read`` as the legacy default. So with no ``default_shelf`` a read-tracker marks
+    every book it surfaced read exactly as before; a library source opts books onto another
+    shelf by setting ``status`` (or the caller passes ``default_shelf``)."""
     outcome = SyncOutcome()
     for book in books:
         try:
-            finished_on = _finish_date(book)
-            if store.is_synced(book.key, finished_on):
+            shelf = target_shelf(book, default_shelf)
+            finished_on = _finish_date(book) if shelf is Shelf.READ else None
+            if store.is_synced(book.key, finished_on, shelf.value):
                 outcome.skipped_synced.append(book.key)
                 continue
 
@@ -199,8 +230,8 @@ def run_sync(
                 outcome.planned.append(book.key)
                 continue
 
-            if writer.mark_finished(book_id, finished_on):
-                store.record(book.key, book_id, finished_on)
+            if writer.mark_shelf(book_id, shelf, finished_on):
+                store.record(book.key, book_id, finished_on, shelf.value)
                 outcome.written.append(book.key)
             else:
                 outcome.failed.append(book.key)
@@ -239,7 +270,7 @@ def run_title_sync(
     outcome = SyncOutcome()
     for entry in entries:
         try:
-            if store.is_synced(entry.key, entry.finish_date):
+            if store.is_synced(entry.key, entry.finish_date, Shelf.READ.value):
                 outcome.skipped_synced.append(entry.key)
                 continue
 
@@ -261,8 +292,8 @@ def run_title_sync(
                 outcome.planned.append(entry.key)
                 continue
 
-            if writer.mark_finished(book_id, entry.finish_date):
-                store.record(entry.key, book_id, entry.finish_date)
+            if writer.mark_shelf(book_id, Shelf.READ, entry.finish_date):
+                store.record(entry.key, book_id, entry.finish_date, Shelf.READ.value)
                 outcome.written.append(entry.key)
             else:
                 outcome.failed.append(entry.key)

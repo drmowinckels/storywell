@@ -22,6 +22,7 @@ from .sync import (
     run_sync,
     run_title_sync,
     summarize,
+    target_shelf,
 )
 
 __all__ = [
@@ -50,4 +51,5 @@ __all__ = [
     "run_sync",
     "run_title_sync",
     "summarize",
+    "target_shelf",
 ]

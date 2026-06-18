@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from storywell.storygraph.store import SyncStore
+from storywell.storygraph.store import SyncStore, sync_marker
 
 
 def test_load_missing_file_gives_empty_store(tmp_path):
@@ -28,6 +28,42 @@ def test_is_synced_handles_none_date(tmp_path):
     store = SyncStore.load(tmp_path / "s.json")
     store.record("A1", "b1", None)
     assert store.is_synced("A1", None) is True
+
+
+def test_sync_marker_prefers_date_over_status():
+    assert sync_marker(date(2023, 8, 18), "read") == "2023-08-18"
+    assert sync_marker(date(2023, 8, 18), None) == "2023-08-18"
+
+
+def test_sync_marker_keys_dateless_non_read_book_on_shelf():
+    assert sync_marker(None, "to-read") == "shelf:to-read"
+    assert sync_marker(None, "currently-reading") == "shelf:currently-reading"
+
+
+def test_sync_marker_dateless_read_keeps_legacy_empty_marker():
+    # a dateless read IS the old statusless case; reusing "" avoids a needless re-scan
+    # of already-synced reads when upgrading a pre-shelf-routing store.
+    assert sync_marker(None, "read") == ""
+    assert sync_marker(None, None) == ""
+    assert sync_marker(None) == ""
+
+
+def test_dateless_shelf_idempotency_keys_on_status(tmp_path):
+    store = SyncStore.load(tmp_path / "s.json")
+    store.record("A1", "b1", None, "to-read")
+    assert store.is_synced("A1", None, "to-read") is True
+    # a different shelf for the same book is not "already synced"
+    assert store.is_synced("A1", None, "currently-reading") is False
+    # a dateless read is also distinct from a dateless to-read
+    assert store.is_synced("A1", None, "read") is False
+
+
+def test_legacy_dateless_marker_still_matches_statusless_query(tmp_path):
+    # pre-shelf-routing stores recorded dateless reads as "" — that must stay valid.
+    store = SyncStore.load(tmp_path / "s.json")
+    store.record("A1", "b1", None)
+    assert store.is_synced("A1", None) is True
+    assert store.is_synced("A1", None, None) is True
 
 
 def test_remembered_match_is_cached_but_not_synced(tmp_path):

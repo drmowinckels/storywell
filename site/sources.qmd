@@ -72,22 +72,31 @@ trust unattended. Run them with `--dry-run` (sync) first and eyeball the match p
 
 ### LibraryThing
 
-- **Format:** mixed · **Flags:** `--file`, `--as-read`, `--read-date`, `--collection`
+- **Format:** mixed · **Flags:** `--file`, `--shelf`, `--as-read`, `--read-date`, `--collection`
 
 LibraryThing is a **catalogue, not a read-status tracker** — a typical export lists every book in
 your library with no read flag and no Date Read. So Storywell reports the catalogue and lets you
-decide what counts as read:
+decide which StoryGraph shelf each book lands on:
 
 - default: only books LibraryThing actually flags read (a "Read"-style collection or a real Date
   Read) count — for a pure catalogue that is usually none;
-- `--as-read`: treat every reported book as read;
-- `--read-date`: stamp today as a placeholder finish date on `--as-read` books with no Date Read;
+- `--shelf read`: route every catalogued book to **read** (this is the modern spelling of the
+  legacy `--as-read`);
+- `--shelf to-read` / `currently-reading` / `did-not-finish`: route the whole catalogue to that
+  shelf instead — books LibraryThing already flags read still go to **read** (a finished signal
+  always wins);
+- `--read-date`: stamp today as a placeholder finish date on read books with no Date Read;
 - `--collection NAME`: only import books in that collection (repeatable; omit for the whole
   catalogue). This is how you scope to a custom "Read" or "Favorites" collection.
 
 ```sh
+# route a "Wishlist" collection to your StoryGraph to-read shelf
 storywell sync --source librarything --file librarything_export.tsv \
-  --collection "Read" --as-read --read-date
+  --collection "Wishlist" --shelf to-read
+
+# mark a "Read" collection read, stamping today where no Date Read exists
+storywell sync --source librarything --file librarything_export.tsv \
+  --collection "Read" --shelf read --read-date
 ```
 
 Both the TAB-delimited CSV and the `.json` export are accepted (JSON is preferred when available —

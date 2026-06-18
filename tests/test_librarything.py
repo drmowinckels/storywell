@@ -3,6 +3,7 @@ from datetime import date, datetime
 
 import pytest
 
+from storywell.models import Shelf
 from storywell.sources import librarything as lt
 from storywell.sources.base import SourceError
 from storywell.sources.csv_source import read_rows
@@ -121,10 +122,54 @@ def test_catalogue_book_is_not_finished_by_default(tmp_path):
     assert book.finished_at is None
 
 
+def test_catalogue_book_status_unknown_by_default(tmp_path):
+    book = _one(tmp_path, _book())
+    assert book.status is Shelf.UNKNOWN
+
+
 def test_mark_read_treats_catalogue_as_read(tmp_path):
     book = _one(tmp_path, _book(), mark_read=True)
     assert book.is_finished is True
     assert book.finished_at is None
+    assert book.status is Shelf.READ
+
+
+def test_shelf_read_is_the_modern_as_read(tmp_path):
+    book = _one(tmp_path, _book(), shelf=Shelf.READ)
+    assert book.is_finished is True
+    assert book.status is Shelf.READ
+
+
+def test_shelf_to_read_routes_catalogue_without_marking_finished(tmp_path):
+    book = _one(tmp_path, _book(), shelf=Shelf.TO_READ)
+    assert book.is_finished is False
+    assert book.finished_at is None
+    assert book.status is Shelf.TO_READ
+
+
+def test_shelf_to_read_still_marks_explicitly_read_books_read(tmp_path):
+    book = _one(tmp_path, _book(**{"Date Read": "2024-03-10"}), shelf=Shelf.TO_READ)
+    assert book.is_finished is True
+    assert book.status is Shelf.READ
+    assert book.finished_at == datetime(2024, 3, 10)
+
+
+def test_shelf_accepts_string_value(tmp_path):
+    book = _one(tmp_path, _book(), shelf="currently-reading")
+    assert book.status is Shelf.CURRENTLY_READING
+    assert book.is_finished is False
+
+
+def test_finished_books_includes_routed_to_read_catalogue(tmp_path):
+    path = _write(
+        tmp_path,
+        _book(**{"Book Id": "1", "Collections": "Your library"}),
+        _book(**{"Book Id": "2", "Collections": "Your library"}),
+    )
+    src = LibraryThingSource(path=path, shelf=Shelf.TO_READ)
+    books = src.finished_books()
+    assert sorted(b.source_id for b in books) == ["1", "2"]
+    assert all(b.status is Shelf.TO_READ for b in books)
 
 
 def test_read_date_stamps_today_placeholder(tmp_path):
