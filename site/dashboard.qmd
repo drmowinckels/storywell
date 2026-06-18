@@ -1,0 +1,79 @@
+---
+title: "Your reading stats"
+description: "Turn your StoryGraph library export into a rich reading dashboard — built entirely in your browser, your data never leaves your device."
+toc: false
+---
+
+StoryGraph's free tier keeps a lot of your reading history to itself. Storywell reads your
+own library export and turns it into a richer picture — years of reading, your moods and
+pace, the characters you gravitate towards — as a single page you can keep, print, or share.
+
+You don't need to install anything or run a terminal. The dashboard below starts with a
+small **sample library** so you can see what you'll get; load your own export and it's
+rebuilt **entirely in your browser** — your library never leaves your device.
+
+## Load your library
+
+1. In StoryGraph, open **Manage Account → Export StoryGraph Library** and download the
+   `.csv` file (StoryGraph emails you a link when it's ready).
+2. Click below and pick that file. The first load fetches a small Python runtime; after
+   that your dashboard appears in a moment.
+
+```{=html}
+<div class="dash-loader">
+  <label class="dash-btn">
+    <input type="file" accept=".csv,text/csv" id="storywell-file" hidden>
+    Load my StoryGraph export…
+  </label>
+  <span id="storywell-status" class="dash-status" role="status" aria-live="polite">Showing example data.</span>
+</div>
+<div class="dash-filters" id="storywell-filters" hidden>
+  <label>Year <select id="storywell-year" aria-label="Filter by year"></select></label>
+  <label>Format <select id="storywell-format" aria-label="Filter by format"></select></label>
+</div>
+```
+
+::: column-page
+```{=html}
+<iframe id="storywell-dash" class="dashboard-frame" src="assets/dashboard/example.html" title="Reading-stats dashboard" loading="lazy" onload="storywellFitFrame(this)"></iframe>
+```
+:::
+
+```{=html}
+<style>
+  .dashboard-frame{
+    width:100%; min-height:640px; border:1px solid var(--bs-border-color,#cdd3da);
+    border-radius:12px; background:#0f1620; display:block;
+  }
+  .dash-loader{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:1rem 0 1.5rem}
+  .dash-btn{
+    display:inline-block;cursor:pointer;font-weight:600;padding:.55rem 1.1rem;border-radius:10px;
+    background:#6f4a20;color:#fff;border:1px solid transparent;
+  }
+  /* Dark mode: the brass accent is light, so flip to dark text on a light-brass button. */
+  .quarto-dark .dash-btn{background:#d8b06a;color:#15211a}
+  .dash-btn:hover{filter:brightness(1.08)}
+  .dash-status{color:var(--bs-body-color,#222);font-size:.92rem}
+  .dash-status[data-kind="busy"]::before{content:"⏳ "}
+  .dash-status[data-kind="ok"]{color:var(--bs-success-text-emphasis,#157347)}
+  .dash-status[data-kind="error"]{color:var(--bs-danger-text-emphasis,#b02a37)}
+  .dash-filters{display:flex;flex-wrap:wrap;gap:18px;margin:0 0 1.25rem}
+  .dash-filters label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:.92rem}
+  .dash-filters select{
+    padding:.35rem .5rem;border-radius:8px;font:inherit;
+    border:1px solid var(--bs-border-color,#cdd3da);background:var(--bs-body-bg,#fff);color:inherit;
+  }
+</style>
+<script>
+  function storywellFitFrame(frame){
+    try{
+      const doc = frame.contentWindow.document;
+      frame.style.height = doc.documentElement.scrollHeight + "px";
+    }catch(e){ /* not ready yet — keep the min-height */ }
+  }
+  addEventListener("resize", () => {
+    document.querySelectorAll(".dashboard-frame").forEach(storywellFitFrame);
+  });
+</script>
+<script src="dashboard.js" defer></script>
+```

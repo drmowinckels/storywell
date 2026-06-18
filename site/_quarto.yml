@@ -1,6 +1,10 @@
 project:
   type: website
   output-dir: _site
+  pre-render: build_dashboard.py
+  resources:
+    - assets/dashboard
+    - dashboard.js
 
 website:
   title: "Storywell"
@@ -17,6 +21,8 @@ website:
         href: install.qmd
       - text: Usage
         href: usage.qmd
+      - text: Dashboard
+        href: dashboard.qmd
       - text: Sources
         href: sources.qmd
       - text: Adding a source
