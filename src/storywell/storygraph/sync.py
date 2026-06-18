@@ -27,9 +27,7 @@ EditionsFn = Callable[[str], list[Edition]]
 
 
 class Writer(Protocol):
-    def mark_shelf(
-        self, book_id: str, status: Shelf | str, date: date | None = None
-    ) -> bool: ...
+    def mark_shelf(self, book_id: str, status: Shelf | str, date: date | None = None) -> bool: ...
 
 
 class Rater(Protocol):
