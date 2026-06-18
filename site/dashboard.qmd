@@ -1,0 +1,47 @@
+---
+title: "Your reading stats"
+toc: false
+---
+
+StoryGraph's free tier keeps a lot of your reading history to itself. Storywell reads your
+own library export and turns it into a richer picture — years of reading, your moods and
+pace, the characters you gravitate towards — as a single page you can keep, print, or share.
+
+You don't need to install anything or run a terminal: load your export below and the
+dashboard is built **entirely in your browser**. Your library never leaves your device.
+
+## See it with example data
+
+This is a dashboard built from a small sample library, so you can see what you'll get:
+
+::: column-page
+```{=html}
+<iframe class="dashboard-frame" src="assets/dashboard/example.html" title="Example reading-stats dashboard" loading="lazy" onload="storywellFitFrame(this)"></iframe>
+```
+:::
+
+## Try it with your own library
+
+1. In StoryGraph, open **Manage Account → Export StoryGraph Library** and download the
+   `.csv` file (StoryGraph emails you a link).
+2. Come back here — the in-browser loader for your own export lands in the next step.
+
+```{=html}
+<style>
+  .dashboard-frame{
+    width:100%; min-height:640px; border:1px solid var(--bs-border-color,#cdd3da);
+    border-radius:12px; background:#0f1620; display:block;
+  }
+</style>
+<script>
+  function storywellFitFrame(frame){
+    try{
+      const doc = frame.contentWindow.document;
+      frame.style.height = doc.documentElement.scrollHeight + "px";
+    }catch(e){ /* cross-origin or not ready — keep the min-height */ }
+  }
+  addEventListener("resize", () => {
+    document.querySelectorAll(".dashboard-frame").forEach(storywellFitFrame);
+  });
+</script>
+```
