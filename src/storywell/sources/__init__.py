@@ -11,6 +11,7 @@ from .base import Source, SourceError
 # under Pyodide/WASM in the browser, where the heavier sources can't be installed.
 _REGISTRY: dict[str, tuple[str, str]] = {
     "audible": ("audible", "AudibleSource"),
+    "bookwyrm": ("bookwyrm", "BookwyrmSource"),
     "goodreads": ("goodreads", "GoodreadsSource"),
     "hardcover": ("hardcover", "HardcoverSource"),
     "kobo": ("kobo", "KoboSource"),
@@ -60,6 +61,7 @@ def __getattr__(name: str):
 __all__ = [
     "SOURCES",
     "AudibleSource",
+    "BookwyrmSource",
     "GoodreadsSource",
     "HardcoverSource",
     "KoboSource",
