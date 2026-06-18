@@ -119,9 +119,7 @@ def test_isbn_match_never_overridden_by_fuzzy():
 
 def test_winner_prefers_finished_over_unfinished():
     unfinished = _book("audible", "A", "Dune", "Frank Herbert", isbn13="9780441172719")
-    finished = _book(
-        "kobo", "K", "Dune", "Frank Herbert", isbn13="9780441172719", is_finished=True
-    )
+    finished = _book("kobo", "K", "Dune", "Frank Herbert", isbn13="9780441172719", is_finished=True)
 
     merged = merge_duplicates([unfinished, finished])
 
