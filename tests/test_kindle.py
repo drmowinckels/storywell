@@ -99,9 +99,7 @@ def test_parse_authors_splits_on_semicolon_then_comma():
 
 
 def test_parse_timestamp_handles_z_suffix_and_garbage():
-    assert parse_timestamp("2024-01-15T08:30:00Z") == datetime(
-        2024, 1, 15, 8, 30, tzinfo=UTC
-    )
+    assert parse_timestamp("2024-01-15T08:30:00Z") == datetime(2024, 1, 15, 8, 30, tzinfo=UTC)
     assert parse_timestamp("2024-01-15T08:30:00") == datetime(2024, 1, 15, 8, 30)
     assert parse_timestamp("not-a-date") is None
     assert parse_timestamp("") is None
@@ -328,9 +326,7 @@ def test_kindle_registered_and_declares_ebook_format():
 
 
 def test_make_source_builds_kindle_with_threshold_options(tmp_path):
-    root = _export_dir(
-        tmp_path, [_metadata_row(asin="B001")], [_session_row(asin="B001")]
-    )
+    root = _export_dir(tmp_path, [_metadata_row(asin="B001")], [_session_row(asin="B001")])
     src = make_source("kindle", path=root, min_minutes=1.0, min_page_flips=1)
     assert isinstance(src, KindleSource)
     assert src.min_minutes == 1.0
