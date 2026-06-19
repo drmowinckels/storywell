@@ -16,6 +16,7 @@ _REGISTRY: dict[str, tuple[str, str]] = {
     "hardcover": ("hardcover", "HardcoverSource"),
     "kobo": ("kobo", "KoboSource"),
     "librarything": ("librarything", "LibraryThingSource"),
+    "literal": ("literal", "LiteralSource"),
 }
 
 _CLASS_TO_MODULE = {cls: module for module, cls in _REGISTRY.values()}
@@ -66,6 +67,7 @@ __all__ = [
     "HardcoverSource",
     "KoboSource",
     "LibraryThingSource",
+    "LiteralSource",
     "Source",
     "SourceError",
     "available_sources",
