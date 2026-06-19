@@ -1,0 +1,6 @@
+Cover,Title,Author,Publisher,ISBN,Timestamp,Activity,Details,Library
+https://covers.example/1.jpg,The Will of the Many,James Islington,Saga Press,9781982141189,2026-05-01T09:12:00Z,Borrowed,21 days,Example County Library
+https://covers.example/1.jpg,The Will of the Many,James Islington,Saga Press,9781982141189,2026-05-20T18:40:00Z,Returned,,Example County Library
+https://covers.example/2.jpg,Project Hail Mary,Andy Weir,Audible Studios,,2026-04-10T07:00:00Z,Placed on hold,,Example County Library
+https://covers.example/2.jpg,Project Hail Mary,Andy Weir,Audible Studios,,2026-04-15T07:00:00Z,Borrowed,7 days,Example County Library
+https://covers.example/3.jpg,Babel,R. F. Kuang,Harper Voyager,,2026-03-01T12:00:00Z,Borrowed,21 days,Example County Library

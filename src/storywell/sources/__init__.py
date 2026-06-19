@@ -15,6 +15,7 @@ _REGISTRY: dict[str, tuple[str, str]] = {
     "goodreads": ("goodreads", "GoodreadsSource"),
     "hardcover": ("hardcover", "HardcoverSource"),
     "kobo": ("kobo", "KoboSource"),
+    "libby": ("libby", "LibbySource"),
     "librarything": ("librarything", "LibraryThingSource"),
     "literal": ("literal", "LiteralSource"),
 }
@@ -66,6 +67,7 @@ __all__ = [
     "GoodreadsSource",
     "HardcoverSource",
     "KoboSource",
+    "LibbySource",
     "LibraryThingSource",
     "LiteralSource",
     "Source",
