@@ -9,6 +9,7 @@ from storywell.storygraph.client import (
     DATE_YEAR_SELECTOR,
     EXPLANATION_SELECTOR,
     READ_STATUS_LABEL_SELECTOR,
+    REMOVE_READ_SELECTOR,
     REVIEW_SUBMIT_SELECTOR,
     STARS_DECIMAL_SELECTOR,
     STARS_INTEGER_SELECTOR,
@@ -22,6 +23,10 @@ from storywell.storygraph.client import (
 from storywell.storygraph.session import StorygraphAuthError
 
 SIGN_IN_URL = "https://app.thestorygraph.com/users/sign_in"
+
+# A read-instance page lists each existing read with a remove-reread link; its presence is
+# the 'already read' signal the client guards on. Any truthy element stands in for it.
+_READ_LINK = object()
 
 
 def test_date_fields():
@@ -117,6 +122,9 @@ class _FakePage:
     def set_label(self, text):
         self.elements[READ_STATUS_LABEL_SELECTOR] = _FakeLabel(text)
 
+    def add_read_instance(self):
+        self.elements[REMOVE_READ_SELECTOR] = _READ_LINK
+
     def remove(self, selector):
         self.elements.pop(selector, None)
 
@@ -176,15 +184,16 @@ def _client(page, tmp_path):
 
 
 def test_mark_finished_already_read_is_noop(tmp_path):
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    page = _FakePage({REMOVE_READ_SELECTOR: _READ_LINK})
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1", date(2023, 8, 18)) is True
-    assert page.goto_urls == ["https://app.thestorygraph.com/books/b1"]
+    assert page.goto_urls == ["https://app.thestorygraph.com/read_instances/new?book_id=b1"]
 
 
 def test_mark_finished_submits_status_form_when_not_read(tmp_path):
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
-    form = _FakeForm(on_submit=lambda: page.set_label("read"))
+    # no finish date and no existing read: fall back to the book-page read status form.
+    page = _FakePage({})
+    form = _FakeForm(on_submit=page.add_read_instance)
     page.elements[STATUS_READ_FORM_SELECTOR] = form
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1") is True
@@ -192,16 +201,16 @@ def test_mark_finished_submits_status_form_when_not_read(tmp_path):
 
 
 def test_mark_finished_returns_false_when_status_form_missing(tmp_path):
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
+    page = _FakePage({})
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1") is False
 
 
 def test_mark_finished_false_when_status_never_flips(tmp_path):
-    # the form submits but the status stays "to read": a silently-rejected write
-    # must report failure, not be recorded as synced.
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
-    form = _FakeForm()  # no on_submit -> label unchanged
+    # the form submits but no read instance appears: a silently-rejected write must report
+    # failure, not be recorded as synced.
+    page = _FakePage({})
+    form = _FakeForm()  # no on_submit -> no read instance created
     page.elements[STATUS_READ_FORM_SELECTOR] = form
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1") is False
@@ -210,8 +219,8 @@ def test_mark_finished_false_when_status_never_flips(tmp_path):
 
 def test_mark_finished_sets_date_fields_and_submits(tmp_path):
     year, month, day = _FakeSelect(), _FakeSelect(), _FakeSelect()
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
-    submit = _FakeSubmit(on_click=lambda: page.set_label("read"))
+    page = _FakePage({})
+    submit = _FakeSubmit(on_click=page.add_read_instance)
     page.elements.update(
         {
             DATE_YEAR_SELECTOR: year,
@@ -229,10 +238,9 @@ def test_mark_finished_sets_date_fields_and_submits(tmp_path):
 
 def test_mark_finished_dated_false_when_status_never_flips(tmp_path):
     year, month, day = _FakeSelect(), _FakeSelect(), _FakeSelect()
-    submit = _FakeSubmit()  # submits but does not flip the status
+    submit = _FakeSubmit()  # submits but no read instance appears
     page = _FakePage(
         {
-            READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read"),
             DATE_YEAR_SELECTOR: year,
             DATE_MONTH_SELECTOR: month,
             DATE_DAY_SELECTOR: day,
@@ -245,9 +253,49 @@ def test_mark_finished_dated_false_when_status_never_flips(tmp_path):
 
 
 def test_mark_finished_returns_false_when_date_field_missing(tmp_path):
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
+    page = _FakePage({})
     with _client(page, tmp_path) as client:
         assert client.mark_finished("b1", date(2023, 8, 18)) is False
+
+
+def test_mark_finished_does_not_append_second_read_when_already_read(tmp_path):
+    # the duplicate-reads regression: a re-mark (e.g. the source's finish date drifted to a
+    # new value) must not append another dated read to a book StoryGraph already records.
+    year, month, day = _FakeSelect(), _FakeSelect(), _FakeSelect()
+    submit = _FakeSubmit()
+    page = _FakePage(
+        {
+            REMOVE_READ_SELECTOR: _READ_LINK,
+            DATE_YEAR_SELECTOR: year,
+            DATE_MONTH_SELECTOR: month,
+            DATE_DAY_SELECTOR: day,
+            SUBMIT_INSTANCE_SELECTOR: submit,
+        }
+    )
+    with _client(page, tmp_path) as client:
+        assert client.mark_finished("b1", date(2024, 1, 1)) is True
+    assert submit.clicked is False
+    assert (year.value, month.value, day.value) == (None, None, None)
+
+
+def test_mark_finished_dateless_does_not_append_when_already_read(tmp_path):
+    # a finished book whose source dropped its finish date must not get a second, dateless
+    # read via the status form when StoryGraph already records it as read.
+    form = _FakeForm()
+    page = _FakePage({REMOVE_READ_SELECTOR: _READ_LINK, STATUS_READ_FORM_SELECTOR: form})
+    with _client(page, tmp_path) as client:
+        assert client.mark_finished("b1") is True
+    assert form.submitted is False
+
+
+def test_has_read_instance_reflects_remove_reread_link(tmp_path):
+    present = _FakePage({REMOVE_READ_SELECTOR: _READ_LINK})
+    absent = _FakePage({})
+    with _client(present, tmp_path) as client:
+        assert client.has_read_instance("b1") is True
+    assert present.goto_urls == ["https://app.thestorygraph.com/read_instances/new?book_id=b1"]
+    with _client(absent, tmp_path) as client:
+        assert client.has_read_instance("b1") is False
 
 
 def test_mark_finished_raises_when_session_expired(tmp_path):
@@ -310,8 +358,8 @@ def test_mark_shelf_ignores_date_for_non_read_shelf(tmp_path):
 
 def test_mark_shelf_read_with_date_uses_dated_read_flow(tmp_path):
     year, month, day = _FakeSelect(), _FakeSelect(), _FakeSelect()
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("to read")})
-    submit = _FakeSubmit(on_click=lambda: page.set_label("read"))
+    page = _FakePage({})
+    submit = _FakeSubmit(on_click=page.add_read_instance)
     page.elements.update(
         {
             DATE_YEAR_SELECTOR: year,
@@ -336,10 +384,10 @@ def test_mark_shelf_accepts_string_status(tmp_path):
 
 
 def test_client_with_external_page_is_noop_on_already_read():
-    page = _FakePage({READ_STATUS_LABEL_SELECTOR: _FakeLabel("read")})
+    page = _FakePage({REMOVE_READ_SELECTOR: _READ_LINK})
     with StorygraphClient(page=page) as client:
         assert client.mark_finished("b1") is True
-    assert page.goto_urls == ["https://app.thestorygraph.com/books/b1"]
+    assert page.goto_urls == ["https://app.thestorygraph.com/read_instances/new?book_id=b1"]
 
 
 def test_write_review_skipped_when_form_absent(tmp_path):
