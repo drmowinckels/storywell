@@ -60,12 +60,19 @@ FileOption = typer.Option(
     None,
     "--file",
     "-f",
-    help="File sources (goodreads, librarything, kobo): path to the export CSV / database.",
+    help="File sources (goodreads, librarything, kobo, calibre): path to the export CSV / "
+    "database / Calibre library.",
 )
 TokenOption = typer.Option(
     None,
     "--token",
     help="API sources (hardcover): personal API token.",
+)
+ReadColumnOption = typer.Option(
+    None,
+    "--read-column",
+    help="Calibre only: label of the custom column that tracks read status (required for "
+    "calibre; Calibre has no built-in read field).",
 )
 _SHELF_CHOICES = ", ".join(s.value for s in WRITABLE_SHELVES)
 ShelfOption = typer.Option(
@@ -145,6 +152,7 @@ def _load_finished(
     shelf: Shelf | None = None,
     read_date: bool = False,
     collections: tuple[str, ...] = (),
+    read_column: str | None = None,
 ) -> list[SourceBook]:
     src = make_source(
         source,
@@ -155,6 +163,7 @@ def _load_finished(
         shelf=shelf,
         read_date=read_date,
         collections=collections,
+        read_column=read_column,
     )
     return src.finished_books(threshold=threshold)
 
@@ -226,6 +235,7 @@ def list_books(
     as_read: bool = AsReadOption,
     read_date: bool = ReadDateOption,
     collection: list[str] = CollectionOption,
+    read_column: str | None = ReadColumnOption,
 ) -> None:
     """List the books a source reports for syncing."""
     target = _parse_shelf(shelf, as_read=as_read)
@@ -240,6 +250,7 @@ def list_books(
             shelf=target,
             read_date=read_date,
             collections=tuple(collection or ()),
+            read_column=read_column,
         )
     except SourceError as err:
         console.print(str(err), style="red")
@@ -446,6 +457,7 @@ def sync(
     as_read: bool = AsReadOption,
     read_date: bool = ReadDateOption,
     collection: list[str] = CollectionOption,
+    read_column: str | None = ReadColumnOption,
     dry_run: bool = typer.Option(
         False, "--dry-run/--no-dry-run", help="Preview matches without writing to StoryGraph."
     ),
@@ -489,6 +501,7 @@ def sync(
             shelf=target,
             read_date=read_date,
             collections=tuple(collection or ()),
+            read_column=read_column,
         )
     except SourceError as err:
         console.print(str(err), style="red")

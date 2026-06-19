@@ -426,3 +426,46 @@ def test_cli_retag_no_matched_books(monkeypatch, tmp_path):
     result = runner.invoke(app, ["retag"])
     assert result.exit_code == 0
     assert "No matched" in result.stdout
+
+
+def _calibre_db(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "metadata.db"
+    connection = sqlite3.connect(db)
+    try:
+        connection.executescript(
+            """
+            CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, isbn TEXT, timestamp TEXT);
+            CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT);
+            CREATE TABLE books_authors_link (book INTEGER, author INTEGER);
+            CREATE TABLE identifiers (id INTEGER PRIMARY KEY, book INTEGER, type TEXT, val TEXT);
+            CREATE TABLE custom_columns (id INTEGER PRIMARY KEY, label TEXT, name TEXT,
+                datatype TEXT);
+            CREATE TABLE custom_1 (id INTEGER PRIMARY KEY, book INTEGER, value);
+            INSERT INTO custom_columns (id, label, name, datatype) VALUES (1, 'read', 'Read',
+                'bool');
+            INSERT INTO books (id, title) VALUES (1, 'Read Book');
+            INSERT INTO custom_1 (book, value) VALUES (1, 1);
+            """
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    return db
+
+
+def test_cli_list_calibre_with_read_column(tmp_path):
+    db = _calibre_db(tmp_path)
+    result = runner.invoke(
+        app, ["list", "--source", "calibre", "--file", str(db), "--read-column", "read"]
+    )
+    assert result.exit_code == 0
+    assert "Read Book" in result.stdout
+
+
+def test_cli_list_calibre_without_read_column_errors(tmp_path):
+    db = _calibre_db(tmp_path)
+    result = runner.invoke(app, ["list", "--source", "calibre", "--file", str(db)])
+    assert result.exit_code == 1
+    assert "--read-column" in result.stdout
