@@ -7,7 +7,10 @@ Selectors/flow verified against the live StoryGraph DOM (2026-06-15):
   shape with their own status slug);
 - the finish date is added on ``/read_instances/new?book_id={id}`` via selects
   ``new_read_instance[day|month|year]`` (numeric values) submitted to POST
-  ``/read_instances``.
+  ``/read_instances``. That page also lists every existing read with a remove-reread link
+  (``a[href*='remove-reread']``), which is the reliable 'already read' signal — the
+  book-page ``.read-status-label`` is not consistently rendered, so a ``read`` write is
+  guarded on read-instance presence, not the label.
 
 The pure helpers (``date_fields``, ``status_form_selector``, ``expected_label``) are
 unit-tested; the browser flow is covered with a mocked page. The non-``read`` shelf forms
@@ -50,6 +53,7 @@ def expected_label(status: Shelf | str) -> str:
 
 
 READ_INSTANCE_NEW_PATH = "/read_instances/new"
+REMOVE_READ_SELECTOR = "a[href*='remove-reread']"
 DATE_DAY_SELECTOR = "select[name='new_read_instance[day]']"
 DATE_MONTH_SELECTOR = "select[name='new_read_instance[month]']"
 DATE_YEAR_SELECTOR = "select[name='new_read_instance[year]']"
@@ -128,29 +132,60 @@ class StorygraphClient:
     def mark_shelf(self, book_id: str, status: Shelf | str, date: date | None = None) -> bool:
         """Route a book to a StoryGraph shelf, idempotently.
 
-        ``read`` keeps the original behaviour: a finish ``date`` is added via the dated-read
-        flow (which both records the read and sets the status), and a dateless ``read`` falls
-        back to the status form. Every other shelf is dateless — only StoryGraph's ``read``
-        status carries read instances — so the ``date`` is ignored and the status form is
-        submitted directly. Returns True only after the page's status label confirms the
-        write landed; a silently-rejected submit reports False so it is never recorded as
-        synced (and is retried on the next run)."""
+        ``read`` is recorded as a *read instance*, so it is guarded on the read-instance
+        list rather than the book-page status label: the label is not reliably rendered, so
+        trusting it lets a re-mark (e.g. when a volatile source finish date shifts, or two
+        source keys resolve to the same book) append a duplicate read. A book that already
+        has any read instance is left untouched; only a never-read book gets one — dated via
+        the dated-read flow (which both records the read and sets the status), or dateless via
+        the status form when the source reports no finish date.
+
+        Every other shelf carries no read instance, so it is routed by the status form and
+        confirmed via the status label. Returns True only once the write is confirmed; a
+        silently-rejected submit reports False so it is never recorded as synced (and is
+        retried on the next run)."""
         target = status if isinstance(status, Shelf) else Shelf(status)
+        if target is Shelf.READ:
+            if self.has_read_instance(book_id):
+                return True
+            if date is not None:
+                submitted = self._add_dated_read(book_id, date)
+            else:
+                submitted = self._mark_read_undated(book_id)
+            if not submitted:
+                return False
+            return self.has_read_instance(book_id)
+
         want = expected_label(target)
         if self.current_status(book_id) == want:
             return True
-        # A dated read instance both records the read and sets status to "read", so when we
-        # have a date (read only) we add only that (one instance, correct date). Setting
-        # status separately would auto-create a second instance dated today.
-        if target is Shelf.READ and date is not None:
-            submitted = self._add_dated_read(book_id, date)
-        else:
-            submitted = self._set_status(target)
-        if not submitted:
+        if not self._set_status(target):
             return False
         # Confirm the write actually landed; a silently-rejected submit must not be
         # recorded as synced (it would be skipped forever on idempotent re-runs).
         return self.current_status(book_id) == want
+
+    def has_read_instance(self, book_id: str) -> bool:
+        """Whether StoryGraph already records at least one read for this book.
+
+        The read-instance page lists every read with a remove-reread link; the presence of
+        any is the reliable 'already read' signal (the book-page status label is not
+        consistently rendered, so it cannot be trusted to prevent a duplicate read)."""
+        page = self._page
+        page.goto(
+            f"{BASE_URL}{READ_INSTANCE_NEW_PATH}?book_id={book_id}",
+            wait_until="domcontentloaded",
+        )
+        raise_if_signed_out(page.url)
+        return page.query_selector(REMOVE_READ_SELECTOR) is not None
+
+    def _mark_read_undated(self, book_id: str) -> bool:
+        """Mark a book read with no finish date via the book-page status form (used only when
+        the source reports the book finished but exposes no date)."""
+        page = self._page
+        page.goto(f"{BASE_URL}/books/{book_id}", wait_until="domcontentloaded")
+        raise_if_signed_out(page.url)
+        return self._set_status(Shelf.READ)
 
     def mark_finished(self, book_id: str, finish_date: date | None = None) -> bool:
         """Mark a book read. Thin alias over ``mark_shelf`` kept for the read-only callers
