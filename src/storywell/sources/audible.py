@@ -25,9 +25,13 @@ from .base import SourceError
 SOURCE_NAME = "audible"
 SOURCE_FORMAT = "audio"
 
+# Finished state (finish date, is_finished, percent) is read from the nested
+# ``listening_status`` object and the rating/review from ``provided_review``; both are
+# requested explicitly so the data the parsers depend on never relies on an undocumented
+# API default (a dropped ``listening_status`` would silently strip every finish date).
 LIBRARY_RESPONSE_GROUPS = (
     "product_desc,product_attrs,contributors,is_finished,percent_complete,relationships"
-    ",provided_review,reviews,review_attrs"
+    ",provided_review,reviews,review_attrs,listening_status"
 )
 DEFAULT_AUTH_DIR = Path.home() / ".audible"
 DEFAULT_CONFIG_FILENAME = "config.toml"
