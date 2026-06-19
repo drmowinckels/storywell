@@ -6,6 +6,7 @@ import audible.exceptions
 import pytest
 
 from storywell.sources.audible import (
+    LIBRARY_RESPONSE_GROUPS,
     PAGE_SIZE,
     AuthFileNotFound,
     LibraryFetchError,
@@ -309,6 +310,15 @@ def test_fetch_library_items_returns_single_short_page(tmp_path):
     assert client.calls[0]["page"] == 1
     assert client.calls[0]["num_results"] == PAGE_SIZE
     assert "is_finished" in client.calls[0]["response_groups"]
+
+
+def test_library_response_groups_request_every_parsed_field():
+    # The parsers read finished state from the nested ``listening_status`` object and the
+    # rating/review from ``provided_review``; both must be requested so the data never
+    # depends on an undocumented API default (a dropped group silently drops finish dates).
+    groups = LIBRARY_RESPONSE_GROUPS.split(",")
+    assert "listening_status" in groups
+    assert "provided_review" in groups
 
 
 def test_fetch_library_items_paginates_until_short_page(tmp_path):
