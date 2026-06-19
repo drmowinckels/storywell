@@ -75,7 +75,7 @@ Common options:
 - `--source, -s` — which vendor to read from (default `audible`).
 - `--threshold, -t` — listening/reading-progress cutoff above which a book counts as finished
   (default `0.95`), in addition to anything the source itself flags complete.
-- `--file, -f` — export CSV / database path for file sources (goodreads, librarything, kobo).
+- `--file, -f` — export/database path for file sources (goodreads, kobo, calibre, applebooks, bookwyrm, libby, kindle, librarything).
 - `--token` — personal API token for `hardcover` (or set `HARDCOVER_TOKEN`).
 - `--shelf <status>` — route books with no finished signal to a StoryGraph shelf (`read`,
   `currently-reading`, `to-read`, `did-not-finish`); finished books always go to `read`. Omit to
@@ -101,50 +101,62 @@ The full command and flag reference lives in the [docs](https://drmowinckels.git
 | Source         | Format | Input                                                                              | Flags                                                           |
 | -------------- | ------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `audible`      | audio  | `audible-cli` registration (`audible quickstart`)                                  | `--auth-file`, `--profile`                                      |
-| `calibre`      | ebook  | local Calibre library `metadata.db`                                                | `--file`, `--read-column`                                       |
+| `applebooks`   | ebook  | on-device `BKLibrary*.sqlite` (macOS, auto-detected)                               | `--file`                                                        |
+| `bookwyrm`     | mixed  | CSV export (Settings → Export)                                                     | `--file`                                                        |
+| `calibre`      | mixed  | local Calibre library `metadata.db`                                                | `--file`, `--read-column`                                       |
 | `goodreads`    | mixed  | `goodreads_library_export.csv` (Settings → Export)                                 | `--file`                                                        |
-| `kobo`         | ebook  | on-device `KoboReader.sqlite`                                                      | `--file`                                                        |
-| `librarything` | mixed  | CSV/JSON export                                                                    | `--file`, `--shelf`, `--as-read`, `--read-date`, `--collection` |
 | `hardcover`    | mixed  | GraphQL API token ([hardcover.app/account/api](https://hardcover.app/account/api)) | `--token`                                                       |
+| `kindle`       | ebook  | Amazon "Request My Data" export (CSVs)                                             | `--file`                                                        |
+| `kobo`         | ebook  | on-device `KoboReader.sqlite`                                                      | `--file`                                                        |
+| `libby`        | mixed  | Libby Timeline / OverDrive history CSV                                             | `--file`, `--shelf`                                             |
+| `librarything` | mixed  | CSV/JSON export                                                                    | `--file`, `--shelf`, `--as-read`, `--read-date`, `--collection` |
+| `literal`      | mixed  | GraphQL token (login)                                                              | `--token`                                                       |
 
 The Audible source reads `~/.audible/config.toml` to find the active profile's auth file; pass
-`--profile <name>` for a non-default profile or `--auth-file <path>` to bypass discovery.
-LibraryThing is a catalogue, not a read tracker — by default nothing counts as read; `--as-read`
-treats every catalogued book as read, `--read-date` stamps today's date, and `--collection NAME`
-(repeatable) scopes to a named collection like "Read".
-Calibre has no built-in read field, so it needs `--read-column LABEL` naming the custom column you
-use to track read status (a Yes/No, rating, or text column); a book counts as finished when that
-column is truthy. Point `--file` at the library folder or the `metadata.db` inside it; the database
-is opened read-only.
+`--profile <name>` or `--auth-file <path>` to override discovery. Apple Books is macOS-only and
+auto-detects its on-device library. Calibre has no built-in read field, so it needs
+`--read-column LABEL` naming the custom column you track read status in (a Yes/No, rating, or text
+column); point `--file` at the library folder or the `metadata.db` inside it. Literal and Hardcover
+take an API `--token`; Bookwyrm reads its CSV export.
 
-**Experimental sources — read before trusting a run:**
+LibraryThing (a catalogue) and Libby (borrow history) carry no finished signal, so by default
+nothing syncs. Route their books onto a shelf with `--shelf <status>` (e.g. `--shelf to-read`); a
+real finished signal always wins and goes to `read`. `--read-date` stamps today on read books with
+no date, and `--collection NAME` (LibraryThing, repeatable) scopes to a named collection like
+"Read".
 
-- **Hardcover** is **not yet runtime-tested**: the query/mapping match Hardcover's documented GraphQL
-  schema and field access is defensive, but it hasn't been run against a live token, and "finished"
-  relies on the documented `status_id == 3` ("Read") mapping. Verify a `--dry-run` first.
-- **Goodreads** parsing is validated (1,156 rows across three exports, ~90% ISBN coverage), but the
-  cross-source **de-duplication premise is unverified** against a real mixed-source run, and many
-  `read` rows have no Date Read (marked read without a finish date).
-- **LibraryThing** is validated against a **single** real export; column fallbacks cover older
-  layouts but it hasn't been exercised on more exports.
+**Newly added sources — run `--dry-run` first:**
+
+- **Literal, Apple Books, Calibre, Bookwyrm, Libby, Kindle** are new: they parse correctly against
+  captured fixtures and follow the same patterns as the stable sources, but haven't been exercised
+  against a broad range of real exports/libraries yet. Kindle's "finished" is _inferred_ from
+  reading sessions (the export has no finished flag), so it's best-effort.
+- **Hardcover** is not yet runtime-tested against a live token; "finished" relies on the documented
+  `status_id == 3` ("Read") mapping.
+- **LibraryThing** is validated against a single real export.
+
+Cross-source de-duplication (the same book from two sources collapsing to one StoryGraph write) and
+non-`read` shelf routing are implemented and verified.
 
 Per-source setup and caveats are documented in full in the
-[Sources guide](https://drmowinckels.github.io/storywell/sources.html).
+[Sources guide](https://drmowinckels.github.io/storywell/sources.html). Don't see your service?
+Storytel, Libro.fm, Hoopla, Spotify audiobooks, Google Play Books and others aren't supported yet —
+the guide [explains which and why](https://drmowinckels.github.io/storywell/sources.html#unsupported).
 
 ## Roadmap
 
 - [x] Audible → StoryGraph: list, match, mark-as-read with finish dates
 - [x] Multi-source architecture (`--source`, pluggable provider registry, ISBN-first matching)
-- [x] Goodreads source (CSV export → StoryGraph)
-- [x] Kobo source (on-device `KoboReader.sqlite`)
-- [x] Calibre source (local library `metadata.db`, custom read column)
-- [x] LibraryThing source (CSV/JSON export) — _experimental_
-- [x] Hardcover source (GraphQL) — _experimental_
+- [x] Goodreads, Kobo, Calibre sources
+- [x] LibraryThing, Hardcover sources — _experimental_
+- [x] Literal, Apple Books, Bookwyrm, Libby, Kindle sources — _newly added_
 - [x] Ratings & reviews sync, audio-edition tagging
-- [ ] Harden experimental sources; verify cross-source de-duplication
+- [x] Cross-source de-duplication
+- [x] Shelf routing — mark `to-read` / `currently-reading` / `did-not-finish`, not just `read`
+- [ ] Harden the new sources against more real exports; live Hardcover token
+- [ ] Evaluate Google Play Books and Spotify audiobooks (one feasibility test each)
 - [ ] Audio-edition retag write side (today `retag` only reports)
-- [ ] currently-reading sync, hosted UI
-- [ ] Homebrew tap
+- [ ] Homebrew tap, hosted UI
 
 ## Adding a source
 
