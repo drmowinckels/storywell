@@ -12,6 +12,7 @@ from .base import Source, SourceError
 _REGISTRY: dict[str, tuple[str, str]] = {
     "applebooks": ("applebooks", "AppleBooksSource"),
     "audible": ("audible", "AudibleSource"),
+    "bookwyrm": ("bookwyrm", "BookwyrmSource"),
     "goodreads": ("goodreads", "GoodreadsSource"),
     "hardcover": ("hardcover", "HardcoverSource"),
     "kindle": ("kindle", "KindleSource"),
@@ -65,6 +66,7 @@ __all__ = [
     "SOURCES",
     "AppleBooksSource",
     "AudibleSource",
+    "BookwyrmSource",
     "GoodreadsSource",
     "HardcoverSource",
     "KindleSource",
