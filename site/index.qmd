@@ -93,8 +93,9 @@ storywell sync                      # mark finished books as read
 ::: {.band}
 ### Still early, and honest about it
 
-Audible → StoryGraph sync is solid. Goodreads and Kobo are validated against real exports.
-LibraryThing and Hardcover are **experimental** — read the
-[caveats](sources.qmd#experimental-sources) before you trust a run. See where it's headed on the
-[roadmap](roadmap.qmd).
+Audible → StoryGraph sync is solid, and Goodreads and Kobo are validated against real exports. Six
+newer sources — Literal, Apple Books, Calibre, Bookwyrm, Libby and Kindle — are fixture-tested and
+best run with `--dry-run` first ([caveats](sources.qmd#newly-added-sources)). Don't see your
+service? Here's [which aren't supported yet, and why](sources.qmd#unsupported). See where it's headed
+on the [roadmap](roadmap.qmd).
 :::

@@ -4,26 +4,27 @@ description: "What works today, what's experimental, and what's next."
 ---
 
 Storywell is alpha software (`0.1.0a0`). The Audible → StoryGraph path is solid; the multi-source
-layer is in and parsing-validated, with two sources still [experimental](sources.qmd#experimental-sources).
+layer now spans eleven vendors — three battle-tested, the rest
+[newly added](sources.qmd#newly-added-sources) and best run with `--dry-run` first.
 
 ## Done
 
 - [x] Audible → StoryGraph: list, match, mark-as-read with finish dates
 - [x] Multi-source architecture (`--source`, pluggable provider registry, ISBN-first matching)
-- [x] Goodreads source (CSV export → StoryGraph)
-- [x] Kobo source (on-device `KoboReader.sqlite`)
-- [x] LibraryThing source (CSV/JSON export) — _experimental_
-- [x] Hardcover source (GraphQL) — _experimental_
+- [x] Goodreads, Kobo, Calibre sources
+- [x] LibraryThing, Hardcover sources — _experimental_
+- [x] Literal, Apple Books, Bookwyrm, Libby, Kindle sources — _newly added_
 - [x] Ratings & reviews sync (with narrator note)
 - [x] Audio-edition tagging (audiobook sources mark the audio edition)
 - [x] Idempotent, interruption-safe sync keyed by `source:id`
+- [x] Cross-source de-duplication (one StoryGraph write when two sources share a book)
+- [x] Shelf routing — file books on `to-read` / `currently-reading` / `did-not-finish`, not just `read`
 
 ## Next
 
-- [ ] Harden the experimental sources against more real exports / a live Hardcover token
-- [ ] Verify cross-source de-duplication on a real mixed-source run
+- [ ] Harden the new sources against more real exports / a live Hardcover token
+- [ ] Evaluate [Google Play Books and Spotify audiobooks](sources.qmd#unsupported) (one feasibility test each)
 - [ ] Audio-edition **retag** write side (today `retag` only reports — see [Usage](usage.qmd#retag))
-- [ ] currently-reading sync
 - [ ] Homebrew tap
 - [ ] Hosted UI
 

@@ -1,21 +1,44 @@
 ---
 title: "Sources"
-description: "How to produce each source's input, the flags it needs, and what's still unproven."
+description: "Every vendor Storywell can read from, how to produce its input, and which services aren't supported yet — and why."
 ---
 
 A **source** is a vendor Storywell can read finished books from. Each source owns its own
 auth/fetch details and normalises everything into the same internal shape, so the StoryGraph
 matching-and-writing side is identical regardless of where the books came from.
 
-Two things vary per source and matter for results:
+Three things vary per source and matter for results:
 
-- **ISBNs.** Sources that export ISBNs (Goodreads, Kobo, LibraryThing, Hardcover) let StoryGraph
-  match by identifier, which is far more reliable than fuzzy title/author matching (Audible, which
-  has no ISBNs).
+- **ISBNs.** Sources that export ISBNs (Goodreads, Kobo, LibraryThing, Hardcover, Literal, Calibre,
+  Bookwyrm) let StoryGraph match by identifier, which is far more reliable than fuzzy title/author
+  matching (Audible, Apple Books, and Kindle have none).
 - **Media format.** An `audio` source marks the audiobook edition on StoryGraph; `ebook`/`print`
   sources tag the best-matching edition; `mixed` is left to per-book resolution.
+- **Read signal.** Most sources prove a book was *finished* and route it to your **read** shelf.
+  Catalogue and borrow sources (LibraryThing, Libby) carry no finished signal — they only sync when
+  you opt them onto a shelf with `--shelf` (see [shelf routing](#shelf-routing)).
 
-## Audible
+## At a glance
+
+| Source | Format | Where the data comes from | Read signal | Key flags |
+|--------|--------|---------------------------|-------------|-----------|
+| `audible` | audio | `audible-cli` registration | progress vs. threshold | `--auth-file`, `--profile` |
+| `goodreads` | mixed | Settings → Export CSV | `read` shelf | `--file` |
+| `kobo` | ebook | on-device `KoboReader.sqlite` | read status | `--file` |
+| `literal` | mixed | GraphQL token (login) | `FINISHED` status | `--token` |
+| `applebooks` | ebook | on-device `BKLibrary*.sqlite` (macOS) | finished flag + progress | `--file` (auto-detected) |
+| `calibre` | mixed | local `metadata.db` | custom read column | `--file`, `--read-column` |
+| `bookwyrm` | mixed | Settings → Export CSV | `shelf` column | `--file` |
+| `librarything` | mixed | CSV/JSON export | none (catalogue) | `--file`, `--shelf`, `--read-date`, `--collection` |
+| `libby` | mixed | Libby Timeline / OverDrive history CSV | none (borrow) | `--file`, `--shelf` |
+| `kindle` | ebook | Amazon "Request My Data" CSVs | inferred from sessions | `--file` |
+| `hardcover` | mixed | GraphQL token | read status | `--token` |
+
+## Stable sources
+
+These are validated against real exports and are the safest to run unattended.
+
+### Audible
 
 - **Format:** audio · **Flags:** `--auth-file`, `--profile`
 
@@ -28,7 +51,7 @@ is title/author based.
 storywell sync --source audible
 ```
 
-## Goodreads
+### Goodreads
 
 - **Format:** mixed · **Flags:** `--file`
 
@@ -42,15 +65,13 @@ storywell sync --source goodreads --file goodreads_library_export.csv
 ```
 
 ::: {.callout-note}
-## What's validated, what isn't
+## What's validated
 Parsing is validated against real exports (1,156 rows across three files, old and post-2022
-layouts) with ~90% ISBN coverage. Two things to know: many `read` rows have **no Date Read**, so
-those are marked read without a finish date; and the cross-source **de-duplication** premise — that
-the same book coming from two sources collapses to one StoryGraph write — is **not yet verified**
-against a real mixed-source run.
+layouts) with ~90% ISBN coverage. Many `read` rows have **no Date Read**, so those are marked read
+without a finish date.
 :::
 
-## Kobo
+### Kobo
 
 - **Format:** ebook · **Flags:** `--file`
 
@@ -65,10 +86,66 @@ storywell sync --source kobo --file /Volumes/KOBOeReader/.kobo/KoboReader.sqlite
 The schema is validated against a real device database (67-column `content` table); every column
 read is present and the query runs without error.
 
-## Experimental sources {#experimental-sources}
+## Newly added sources {#newly-added-sources}
 
-These parse correctly against the exports they've seen, but haven't been exercised broadly enough to
-trust unattended. Run them with `--dry-run` (sync) first and eyeball the match plan.
+These parse correctly against captured fixtures and follow the same proven patterns as the stable
+sources, but haven't been exercised against a broad range of real exports/libraries yet. Run them
+with `--dry-run` (sync) first and eyeball the match plan.
+
+### Literal
+
+- **Format:** mixed · **Flags:** `--token`
+
+Reads your finished shelf from [Literal](https://literal.club) over its GraphQL API — a close cousin
+of the Hardcover source, with cleaner data (ISBNs, ratings, and reviews come back directly). Log in
+once to obtain a bearer token and pass it with `--token`, or set `LITERAL_TOKEN`. Books with Literal's
+`FINISHED` status are marked read; finish dates are fetched per book.
+
+```sh
+export LITERAL_TOKEN="..."
+storywell sync --source literal
+```
+
+### Apple Books
+
+- **Format:** ebook · **Flags:** `--file` (optional) · **macOS only**
+
+Mirrors the Kobo pattern: Apple Books keeps its library in an on-device SQLite database
+(`BKLibrary*.sqlite`) under `~/Library/Containers/com.apple.iBooksX/`. Storywell finds it
+automatically — pass `--file` only to point at a specific database. A book counts as finished when
+Apple's finished flag is set or its reading progress clears the threshold; the database is opened
+read-only. There are **no ISBNs** in this database, so matching is title/author based.
+
+```sh
+storywell sync --source applebooks
+```
+
+### Calibre
+
+- **Format:** mixed · **Flags:** `--file`, `--read-column`
+
+Reads your local [Calibre](https://calibre-ebook.com) library `metadata.db`. Calibre has **no
+built-in read field**, so it needs `--read-column LABEL` naming the custom column you use to track
+read status (a Yes/No, rating, or text column); a book counts as finished when that column is truthy.
+ISBNs come from Calibre's `identifiers` table. Point `--file` at the library folder or the
+`metadata.db` inside it; the database is opened read-only.
+
+```sh
+storywell sync --source calibre --file ~/Calibre\ Library --read-column "Read"
+```
+
+### Bookwyrm
+
+- **Format:** mixed · **Flags:** `--file`
+
+[Bookwyrm](https://joinbookwyrm.com) is a federated Goodreads alternative whose CSV export
+(**Settings → Export**) is the richest of any file source — it carries shelf status, start/finish
+dates, ratings, reviews, and both ISBNs. The `read` shelf is marked read with its finish date;
+`currently-reading` and `to-read` rows are routed to their matching StoryGraph shelves.
+
+```sh
+storywell sync --source bookwyrm --file bookwyrm-export.csv
+```
 
 ### LibraryThing
 
@@ -76,46 +153,69 @@ trust unattended. Run them with `--dry-run` (sync) first and eyeball the match p
 
 LibraryThing is a **catalogue, not a read-status tracker** — a typical export lists every book in
 your library with no read flag and no Date Read. So Storywell reports the catalogue and lets you
-decide which StoryGraph shelf each book lands on:
+decide which StoryGraph shelf each book lands on (see [shelf routing](#shelf-routing)):
 
 - default: only books LibraryThing actually flags read (a "Read"-style collection or a real Date
   Read) count — for a pure catalogue that is usually none;
-- `--shelf read`: route every catalogued book to **read** (this is the modern spelling of the
-  legacy `--as-read`);
+- `--shelf read`: route every catalogued book to **read** (the modern spelling of the legacy
+  `--as-read`);
 - `--shelf to-read` / `currently-reading` / `did-not-finish`: route the whole catalogue to that
   shelf instead — books LibraryThing already flags read still go to **read** (a finished signal
   always wins);
 - `--read-date`: stamp today as a placeholder finish date on read books with no Date Read;
 - `--collection NAME`: only import books in that collection (repeatable; omit for the whole
-  catalogue). This is how you scope to a custom "Read" or "Favorites" collection.
+  catalogue).
 
 ```sh
 # route a "Wishlist" collection to your StoryGraph to-read shelf
 storywell sync --source librarything --file librarything_export.tsv \
   --collection "Wishlist" --shelf to-read
-
-# mark a "Read" collection read, stamping today where no Date Read exists
-storywell sync --source librarything --file librarything_export.tsv \
-  --collection "Read" --shelf read --read-date
 ```
 
-Both the TAB-delimited CSV and the `.json` export are accepted (JSON is preferred when available —
-its `originaltitle` matches StoryGraph better).
+Both the TAB-delimited CSV and the `.json` export are accepted (JSON is preferred — its
+`originaltitle` matches StoryGraph better).
 
-::: {.callout-warning}
-## Experimental
-Validated against a **single** real export (TAB-delimited, UTF-8 with BOM). Column lookups are
-case-insensitive with fallbacks for older layouts, but it hasn't been exercised on more exports —
-treat results as unproven.
+### Libby / OverDrive
+
+- **Format:** mixed · **Flags:** `--file`, `--shelf` (required)
+
+Libby and OverDrive can export your borrowing history — the Libby **Timeline → Export → Spreadsheet**
+CSV, or the OverDrive website **History** export. This is *borrow* activity, not reading status: no
+finished flag, no finish date, no ISBN. Storywell therefore never claims a borrowed book was read —
+you must opt the borrow list onto a shelf with `--shelf` (typically `to-read`), or nothing syncs.
+
+```sh
+storywell sync --source libby --file libbytimeline-activities.csv --shelf to-read
+```
+
+::: {.callout-note}
+## Use the raw export
+Export the **raw** Libby timeline, not Libby's "share to Goodreads" format — they have different
+columns. Validated against a captured raw export; the schema is undocumented, so check a `--dry-run`.
 :::
+
+### Kindle
+
+- **Format:** ebook · **Flags:** `--file`
+
+Amazon has no live API, but its privacy portal does: **Request My Data → Kindle** emails you a ZIP
+(it can take days to weeks to arrive) containing `Kindle.KindleDocs.DocumentMetadata.csv` and
+per-session `Kindle.Devices.ReadingSession.csv` files. Point `--file` at the unzipped export folder.
+The export has **no finished flag**, so Storywell infers "finished" heuristically from your reading
+sessions — treat it as best-effort and always review a `--dry-run`. It keys on ASIN (no ISBN), so
+matching is title/author based.
+
+```sh
+storywell sync --source kindle --file ~/Downloads/Kindle-export --dry-run
+```
 
 ### Hardcover
 
 - **Format:** mixed · **Flags:** `--token`
 
-Reads your shelf over Hardcover's GraphQL API. Get a personal token at
+Reads your shelf over [Hardcover](https://hardcover.app)'s GraphQL API. Get a personal token at
 [hardcover.app/account/api](https://hardcover.app/account/api) and pass it with `--token`, or set
-`HARDCOVER_TOKEN` in your environment.
+`HARDCOVER_TOKEN`.
 
 ```sh
 export HARDCOVER_TOKEN="hc_..."
@@ -124,12 +224,62 @@ storywell sync --source hardcover
 
 ::: {.callout-warning}
 ## Experimental
-The query and response mapping were verified against Hardcover's official GraphQL schema (2026-06),
-and field access is defensive so schema drift degrades to empty rather than crashing. But it has
-**not been run against a live token**, and "finished" relies on Hardcover's documented
-`status_id == 3` ("Read") mapping rather than something the schema pins down. Verify a `--dry-run`
-before trusting a write.
+The query and response mapping were verified against Hardcover's official GraphQL schema and field
+access is defensive, but it has **not been run against a live token**, and "finished" relies on the
+documented `status_id == 3` ("Read") mapping. Verify a `--dry-run` before trusting a write.
 :::
+
+## Shelf routing {#shelf-routing}
+
+Most sources prove a book was *finished* and send it to your **read** shelf. Catalogue and borrow
+sources (LibraryThing, Libby) carry no finished signal — so Storywell never marks their books read by
+default. Instead you route them with `--shelf`:
+
+- `--shelf to-read` / `currently-reading` / `did-not-finish` files the source's books on that shelf;
+- a real finished signal always wins — a book the source *does* flag read still goes to **read**;
+- read-tracker sources (Audible, Goodreads, Kobo, Hardcover, Literal, Apple Books, Calibre, Bookwyrm)
+  stay read-only and ignore `--shelf` for already-finished books, so you can't accidentally flood a
+  shelf.
+
+This is why a borrow source like Libby requires `--shelf`: without it there is no signal to act on,
+so nothing syncs.
+
+## Services Storywell doesn't support — and why {#unsupported}
+
+Storywell can add almost any service that exposes your data somehow — an export file, an on-device
+database, or an API. The hard requirement is a **data path**: with no way to get your reading data
+out, there is nothing to read. A second question is whether that data proves you *finished* a book;
+when it only proves a *borrow*, *purchase*, or *ownership*, Storywell can still file those books on a
+shelf via `--shelf`, but it never silently claims you read them.
+
+None of the services below is an architecture limitation — each would be reconsidered the moment the
+vendor ships an export or API with reading data.
+
+### Being evaluated
+
+- **Google Play Books** — the official Books API exposes a "Have read" shelf with ISBNs
+  (`mylibrary/bookshelves`), which looks promising. It hinges on one unconfirmed question: whether the
+  app's *Mark as finished* actually writes to that API shelf. (The Google Takeout export only contains
+  highlight annotations — no reading status — so that path is a dead end.)
+- **Spotify audiobooks** — the Web API exposes a per-chapter `resume_point.fully_played` completion
+  flag under the `user-read-playback-position` scope. It hinges on whether that flag is reliable for
+  audiobooks (it is known to be stale for podcasts) and on stamping a finish date at sync time. The
+  account data download contains no audiobook listening data.
+
+### No data path
+
+No official export or public API, so there is nothing to read without reverse-engineering a private
+app — brittle, and against their terms:
+
+- **Storytel**, **BookBeat**, **Nextory** — subscription audiobook services.
+- **Libro.fm** — you own the audiobooks, but listening progress lives only in the app.
+- **Scribd / Everand** and **Nook (B&N)** — no export, no API.
+
+### Borrow data only, with no export
+
+- **Hoopla** and **Sora** — library apps whose activity is borrow-based and, unlike Libby/OverDrive,
+  expose no retrievable export. If one appears, they'd slot in like Libby — routed to a shelf with
+  `--shelf`.
 
 ## Next
 
