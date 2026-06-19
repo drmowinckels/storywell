@@ -48,8 +48,7 @@ def _make_db(
             (custom_column_id, custom_label, custom_label.title(), custom_datatype),
         )
         connection.execute(
-            f"CREATE TABLE custom_{custom_column_id} (id INTEGER PRIMARY KEY, "
-            "book INTEGER, value)"
+            f"CREATE TABLE custom_{custom_column_id} (id INTEGER PRIMARY KEY, book INTEGER, value)"
         )
         author_ids: dict[str, int] = {}
         for book in books:
