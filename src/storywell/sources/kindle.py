@@ -236,18 +236,29 @@ def build_books(
     return books
 
 
+def _name_matches(name: str, base: str) -> bool:
+    """True if ``name`` is the wanted export CSV, tolerating Amazon's prefixes
+    (``Kindle.Devices.``) and the numeric suffix on split files (``ReadingSession2.csv``)."""
+    lowered = name.lower()
+    if not lowered.endswith(".csv"):
+        return False
+    stem = lowered[: -len(".csv")].rstrip("0123456789")
+    return stem.endswith(base)
+
+
 def _find_files(path: Path, filename: str) -> list[Path]:
-    """Locate every export file whose name ends in ``filename`` under ``path``.
+    """Locate every export file matching ``filename`` under ``path``.
 
     Accepts ``path`` itself when it is a single matching CSV, else searches the directory tree
-    recursively (Amazon nests the CSVs under per-request subfolders). Matching is on the
-    trailing filename, case-insensitive, so ``Kindle.Devices.ReadingSession.csv`` and a bare
-    ``ReadingSession.csv`` both resolve.
+    recursively (Amazon nests the CSVs under per-request subfolders). Matching is case-insensitive
+    on the base name and tolerates both Amazon's ``Kindle.Devices.`` prefixes and the numeric
+    suffix on split files, so ``Kindle.Devices.ReadingSession.csv``, ``ReadingSession2.csv`` and a
+    bare ``ReadingSession.csv`` all resolve.
     """
-    suffix = filename.lower()
+    base = filename.lower().removesuffix(".csv")
     if path.is_file():
-        return [path] if path.name.lower().endswith(suffix) else []
-    return sorted(p for p in path.rglob("*.csv") if p.name.lower().endswith(suffix))
+        return [path] if _name_matches(path.name, base) else []
+    return sorted(p for p in path.rglob("*.csv") if _name_matches(p.name, base))
 
 
 def load_export(

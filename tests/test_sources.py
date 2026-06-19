@@ -30,8 +30,8 @@ def test_make_source_drops_options_the_source_does_not_accept():
 
 
 def test_make_source_unknown_name_lists_available():
-    with pytest.raises(SourceError, match="Unknown source 'kindle'.*audible"):
-        make_source("kindle")
+    with pytest.raises(SourceError, match="Unknown source 'notarealsource'.*audible"):
+        make_source("notarealsource")
 
 
 def test_source_book_key_namespaces_by_source():
