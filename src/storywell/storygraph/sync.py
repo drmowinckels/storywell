@@ -25,6 +25,7 @@ SearchFn = Callable[[str], list[Candidate]]
 ConfirmFn = Callable[[Any, MatchResult], "Candidate | None"]
 EditionFn = Callable[[str, str], "str | None"]
 EditionsFn = Callable[[str], list[Edition]]
+ReadElsewhereFn = Callable[[str], bool]
 
 
 class Writer(Protocol):
@@ -48,6 +49,7 @@ class SyncOutcome:
     written: list[str] = field(default_factory=list)
     planned: list[str] = field(default_factory=list)
     skipped_synced: list[str] = field(default_factory=list)
+    skipped_other_edition: list[str] = field(default_factory=list)
     no_match: list[str] = field(default_factory=list)
     ambiguous_skipped: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
@@ -195,6 +197,7 @@ def run_sync(
     store: SyncStore,
     confirm_fn: ConfirmFn | None = None,
     edition_fn: EditionFn | None = None,
+    read_elsewhere_fn: ReadElsewhereFn | None = None,
     default_shelf: Shelf | None = None,
     dry_run: bool = False,
 ) -> SyncOutcome:
@@ -204,7 +207,11 @@ def run_sync(
     then the book's declared ``status``, then ``default_shelf`` (the CLI ``--shelf`` target),
     then ``read`` as the legacy default. So with no ``default_shelf`` a read-tracker marks
     every book it surfaced read exactly as before; a library source opts books onto another
-    shelf by setting ``status`` (or the caller passes ``default_shelf``)."""
+    shelf by setting ``status`` (or the caller passes ``default_shelf``).
+
+    ``read_elsewhere_fn`` (optional) guards against cross-edition duplicates: when a freshly
+    matched ``read`` book is one the reader already read on a *different* StoryGraph edition,
+    it is left unmarked so the work keeps a single read."""
     outcome = SyncOutcome()
     for book in merge_duplicates(books):
         try:
@@ -215,6 +222,7 @@ def run_sync(
                 continue
 
             book_id = store.cached_book_id(book.key)
+            newly_matched = book_id is None
             if book_id is None:
                 result = match_for_book(book, search_fn)
                 chosen = resolve_match(book, result, confirm_fn)
@@ -226,6 +234,21 @@ def run_sync(
                     continue
                 book_id = _effective_book_id(chosen.book_id, book.media_format, edition_fn)
                 store.remember_match(book.key, book_id)
+
+            # Only on a fresh match (the edition page is already being scraped then, and
+            # already-synced books never reach here): if the reader has read another edition
+            # of this work, leave it alone — marking our edition would record a second read
+            # on the same work. Recorded as synced so the check is not repeated every run.
+            if (
+                newly_matched
+                and shelf is Shelf.READ
+                and read_elsewhere_fn is not None
+                and read_elsewhere_fn(book_id)
+            ):
+                if not dry_run:
+                    store.record(book.key, book_id, finished_on, shelf.value)
+                outcome.skipped_other_edition.append(book.key)
+                continue
 
             if dry_run:
                 outcome.planned.append(book.key)

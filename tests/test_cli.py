@@ -70,6 +70,9 @@ class _FakeSearcher:
     def resolve_edition(self, book_id, media_format, **kwargs):
         return None
 
+    def read_on_another_edition(self, book_id):
+        return False
+
 
 class _FakeClient:
     def __init__(self, *args, **kwargs):
@@ -255,6 +258,9 @@ class _AuthSearcher:
 
     def resolve_edition(self, book_id, media_format, **kwargs):
         return None
+
+    def read_on_another_edition(self, book_id):
+        return False
 
 
 def test_cli_sync_aborts_and_saves_on_session_expiry(monkeypatch, tmp_path):

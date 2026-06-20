@@ -318,6 +318,56 @@ def test_list_editions_degrades_to_collected_on_failure():
         assert searcher.list_editions("work") == []
 
 
+class _MarkerEditionsPage:
+    def __init__(self, marker_present, *, panes=True, boom=False):
+        self.marker_present = marker_present
+        self.panes = panes
+        self.boom = boom
+        self.goto_urls = []
+        self.url = ""
+
+    def goto(self, url, **kwargs):
+        self.goto_urls.append(url)
+        if self.boom:
+            raise RuntimeError("navigation failed")
+        self.url = url
+
+    def wait_for_selector(self, selector, timeout=None):
+        if not self.panes:
+            raise TimeoutError("no editions")
+        return object()
+
+    def query_selector(self, selector):
+        return object() if (self.marker_present and "another edition" in selector) else None
+
+
+def test_read_on_another_edition_true_when_marker_present():
+    page = _MarkerEditionsPage(marker_present=True)
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.read_on_another_edition("work") is True
+    assert page.goto_urls == ["https://app.thestorygraph.com/books/work/editions"]
+
+
+def test_read_on_another_edition_false_when_marker_absent():
+    page = _MarkerEditionsPage(marker_present=False)
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.read_on_another_edition("work") is False
+
+
+def test_read_on_another_edition_false_when_no_editions_pane():
+    # an editions page that never renders panes must not be read as "read elsewhere".
+    page = _MarkerEditionsPage(marker_present=True, panes=False)
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.read_on_another_edition("work") is False
+
+
+def test_read_on_another_edition_degrades_to_false_on_scrape_failure():
+    # best-effort: a scrape failure must not skip a wanted read (better a rare dup).
+    page = _MarkerEditionsPage(marker_present=True, boom=True)
+    with StorygraphSearcher(page=page) as searcher:
+        assert searcher.read_on_another_edition("work") is False
+
+
 def test_search_returns_empty_when_no_results(tmp_path):
     page = _FakePage([])  # wait_for_selector times out -> no candidates
     with StorygraphSearcher(page=page) as searcher:
