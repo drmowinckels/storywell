@@ -325,6 +325,88 @@ def test_run_sync_does_not_re_resolve_cached_edition(tmp_path):
     assert writer.calls == [("audio-ed", Shelf.READ, None)]
 
 
+def test_run_sync_skips_marking_when_read_on_another_edition(tmp_path):
+    # the cross-edition duplicate guard: a freshly matched book the reader already read on a
+    # different StoryGraph edition must be left unmarked, and recorded so it is not rechecked.
+    writer = _FakeWriter()
+    store = _store(tmp_path)
+    checked = []
+    outcome = run_sync(
+        [_book("Wool", source_id="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))],
+        search_fn=lambda q: [Candidate("b1", "Wool", "Hugh Howey")],
+        writer=writer,
+        store=store,
+        read_elsewhere_fn=lambda book_id: checked.append(book_id) or True,
+    )
+    assert checked == ["b1"]
+    assert writer.calls == []
+    assert outcome.skipped_other_edition == ["audible:A1"]
+    assert outcome.written == []
+    assert store.is_synced("audible:A1", date(2023, 8, 18), Shelf.READ.value) is True
+
+
+def test_run_sync_marks_normally_when_not_read_on_another_edition(tmp_path):
+    writer = _FakeWriter()
+    outcome = run_sync(
+        [_book("Wool", source_id="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))],
+        search_fn=lambda q: [Candidate("b1", "Wool", "Hugh Howey")],
+        writer=writer,
+        store=_store(tmp_path),
+        read_elsewhere_fn=lambda book_id: False,
+    )
+    assert writer.calls == [("b1", Shelf.READ, date(2023, 8, 18))]
+    assert outcome.written == ["audible:A1"]
+
+
+def test_run_sync_does_not_check_other_edition_for_cached_book(tmp_path):
+    # a book already matched on a prior run is the storywell-marked edition; the cross-edition
+    # check (which scrapes the editions page) must not run for it every time.
+    store = _store(tmp_path)
+    store.remember_match("audible:A1", "bX")
+    checked = []
+    writer = _FakeWriter()
+    run_sync(
+        [_book("X", source_id="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))],
+        search_fn=lambda q: [],
+        writer=writer,
+        store=store,
+        read_elsewhere_fn=lambda book_id: checked.append(book_id) or True,
+    )
+    assert checked == []
+    assert writer.calls == [("bX", Shelf.READ, date(2023, 8, 18))]
+
+
+def test_run_sync_dry_run_reports_other_edition_skip_without_recording(tmp_path):
+    store = _store(tmp_path)
+    outcome = run_sync(
+        [_book("Wool", source_id="A1", finished_at=datetime(2023, 8, 18, tzinfo=UTC))],
+        search_fn=lambda q: [Candidate("b1", "Wool", "Hugh Howey")],
+        writer=_FakeWriter(),
+        store=store,
+        read_elsewhere_fn=lambda book_id: True,
+        dry_run=True,
+    )
+    assert outcome.skipped_other_edition == ["audible:A1"]
+    assert outcome.planned == []
+    assert store.is_synced("audible:A1", date(2023, 8, 18), Shelf.READ.value) is False
+
+
+def test_run_sync_does_not_check_other_edition_for_non_read_shelf(tmp_path):
+    # cross-edition reads only matter for the read shelf; a to-read routing never checks.
+    checked = []
+    writer = _FakeWriter()
+    run_sync(
+        [_book("X", source_id="A1")],
+        search_fn=lambda q: [Candidate("b1", "X", "")],
+        writer=writer,
+        store=_store(tmp_path),
+        read_elsewhere_fn=lambda book_id: checked.append(book_id) or True,
+        default_shelf=Shelf.TO_READ,
+    )
+    assert checked == []
+    assert writer.calls == [("b1", Shelf.TO_READ, None)]
+
+
 # --- shelf routing ----------------------------------------------------------------------
 
 

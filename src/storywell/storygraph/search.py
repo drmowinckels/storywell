@@ -28,6 +28,10 @@ _BOOK_ID_RE = re.compile(r"/books/([^/?#]+)")
 # Verified against the live editions DOM (2026-06-15).
 EDITIONS_PANE_SELECTOR = ".browse-editions .book-pane"
 EDITIONS_MAX_PAGES = 3
+# StoryGraph stamps "You've read another edition" on every edition pane except the one the
+# reader actually read; its presence means the work is already read on a *different*
+# edition, so marking our target edition would add a second read to the same work.
+READ_ANOTHER_EDITION_SELECTOR = "text=read another edition"
 
 _EXPAND_SHOW_MORE_JS = """
 () => {
@@ -214,6 +218,27 @@ class StorygraphSearcher:
         except Exception:
             return None
         return None
+
+    def read_on_another_edition(self, book_id: str) -> bool:
+        """Whether the reader already has a read on some *other* edition of this work.
+
+        StoryGraph stamps "You've read another edition" on the editions page for every
+        edition the reader has not read once they've read any one of them, so its presence
+        means the work is already read elsewhere and our target edition should be left
+        unmarked (marking it would record a second read on the same work). The marker shows
+        on the first editions page whenever the work has more than one edition, so a single
+        page load suffices. Best-effort: any scrape failure returns False, so a never-read
+        book is still marked (a rare missed dedup beats silently skipping a wanted read)."""
+        try:
+            self._page.goto(f"{BASE_URL}/books/{book_id}/editions", wait_until="domcontentloaded")
+            raise_if_signed_out(self._page.url)
+            try:
+                self._page.wait_for_selector(EDITIONS_PANE_SELECTOR, timeout=RESULT_TIMEOUT_MS)
+            except Exception:
+                return False
+            return self._page.query_selector(READ_ANOTHER_EDITION_SELECTOR) is not None
+        except Exception:
+            return False
 
     def list_editions(self, book_id: str, *, max_pages: int = EDITIONS_MAX_PAGES) -> list[Edition]:
         """All editions of a work (paged, document order, deduped by id). Best-effort:

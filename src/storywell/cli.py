@@ -548,6 +548,7 @@ def sync(
                     store=store,
                     confirm_fn=_prompt_ambiguous,
                     edition_fn=searcher.resolve_edition,
+                    read_elsewhere_fn=searcher.read_on_another_edition,
                     default_shelf=target,
                 )
                 review_outcome = (
@@ -562,6 +563,7 @@ def sync(
     console.print(
         f"read — written: {len(outcome.written)}  "
         f"skipped (already synced): {len(outcome.skipped_synced)}  "
+        f"skipped (read on another edition): {len(outcome.skipped_other_edition)}  "
         f"ambiguous skipped: {len(outcome.ambiguous_skipped)}  "
         f"no match: {len(outcome.no_match)}  "
         f"failed: {len(outcome.failed)}",
