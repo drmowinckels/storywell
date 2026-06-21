@@ -11,9 +11,9 @@ from rich.columns import Columns
 from rich.console import Console
 from rich.table import Table
 
-from . import __version__
+from . import __version__, service
 from .models import WRITABLE_SHELVES, Shelf, SourceBook
-from .sources import SourceError, available_sources, make_source
+from .sources import SourceError, available_sources
 from .stats import compute_all, load_export
 
 if TYPE_CHECKING:
@@ -154,8 +154,9 @@ def _load_finished(
     collections: tuple[str, ...] = (),
     read_column: str | None = None,
 ) -> list[SourceBook]:
-    src = make_source(
+    return service.list_finished(
         source,
+        threshold=threshold,
         auth_file=auth_file,
         profile=profile,
         path=path,
@@ -165,35 +166,24 @@ def _load_finished(
         collections=collections,
         read_column=read_column,
     )
-    return src.finished_books(threshold=threshold)
 
 
 @contextlib.contextmanager
 def _session_browser(*, headless: bool) -> Iterator:
     """Open one authenticated StoryGraph browser, or exit with a clear message.
 
-    Checks the session on the shared page rather than launching a throwaway
-    browser first: Playwright's sync API forbids a second concurrent context, so
-    the old pre-flight ``is_authenticated()`` launch both wasted a cold start and
-    risked colliding with the work browser.
+    Thin terminal-facing wrapper over ``service.session_browser``: it converts the
+    service's domain errors (missing Playwright, no active session) into a red message
+    and a non-zero exit, keeping the command bodies free of presentation concerns.
     """
-    from .storygraph import (
-        StorygraphBrowser,
-        StorygraphDependencyError,
-        is_authenticated,
-    )
+    from .storygraph import StorygraphDependencyError
 
     try:
-        browser_cm = StorygraphBrowser(headless=headless)
-    except StorygraphDependencyError as err:
+        with service.session_browser(headless=headless) as browser:
+            yield browser
+    except (StorygraphDependencyError, service.NotAuthenticatedError) as err:
         console.print(str(err), style="red")
         raise typer.Exit(code=1) from err
-
-    with browser_cm as browser:
-        if not is_authenticated(page=browser.page):
-            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
-            raise typer.Exit(code=1)
-        yield browser
 
 
 def build_table(books: list[SourceBook], *, source: str) -> Table:
@@ -480,8 +470,8 @@ def sync(
     from .storygraph import (
         MatchStatus,
         StorygraphAuthError,
+        StorygraphDependencyError,
         SyncStore,
-        plan_sync,
         run_review_sync,
         run_sync,
         summarize,
@@ -516,11 +506,12 @@ def sync(
 
     if dry_run:
         try:
-            with _session_browser(headless=headless) as browser:
-                searcher = StorygraphSearcher(page=browser.page)
-                with searcher:
-                    items = plan_sync(books, searcher.search)
-        except StorygraphAuthError as err:
+            items = service.build_sync_plan(books, headless=headless)
+        except (
+            StorygraphDependencyError,
+            service.NotAuthenticatedError,
+            StorygraphAuthError,
+        ) as err:
             console.print(str(err), style="red")
             raise typer.Exit(code=1) from err
         console.print(build_match_table(items))
@@ -653,7 +644,7 @@ def retag(
 
     try:
         if not is_authenticated():
-            console.print("No active StoryGraph session. Run `storygraph-login`.", style="red")
+            console.print(service.NO_SESSION_MESSAGE, style="red")
             raise typer.Exit(code=1)
     except StorygraphDependencyError as err:
         console.print(str(err), style="red")
@@ -845,7 +836,7 @@ def storygraph_status() -> None:
     if ok:
         console.print("StoryGraph session is active.", style="green")
     else:
-        console.print("No active StoryGraph session. Run `storygraph-login`.", style="yellow")
+        console.print(service.NO_SESSION_MESSAGE, style="yellow")
         raise typer.Exit(code=1)
 
 
