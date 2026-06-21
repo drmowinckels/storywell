@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..config import ensure_config_dir, storygraph_state_path
+from ..config import ensure_config_dir, secure_file, storygraph_state_path
 
 BASE_URL = "https://app.thestorygraph.com"
 SIGN_IN_URL = f"{BASE_URL}/users/sign_in"
@@ -58,11 +57,6 @@ def _is_signed_in(url: str) -> bool:
     return SIGN_IN_PATH not in url
 
 
-def _secure_file(path: Path) -> None:
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
-
-
 def _default_wait_for_user() -> None:
     input(
         "\nA browser window has opened on the StoryGraph sign-in page.\n"
@@ -99,7 +93,7 @@ def login(
         finally:
             browser.close()
 
-    _secure_file(state_path)
+    secure_file(state_path)
     if SIGN_IN_PATH in final_url or not state.get("cookies"):
         raise StorygraphAuthError(
             "Login didn't complete — the browser is still on the sign-in page or no session "

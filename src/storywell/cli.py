@@ -862,5 +862,28 @@ def storygraph_status() -> None:
         raise typer.Exit(code=1)
 
 
+@app.command("audible-login")
+def audible_login(
+    marketplace: str = typer.Option(
+        "us",
+        "--marketplace",
+        "-m",
+        help="Audible marketplace country code (us, uk, de, ca, au, fr, jp, it, in, es, br).",
+    ),
+) -> None:
+    """Log in to Audible in a browser and save the session (no `audible quickstart` needed)."""
+    from .sources.audible_auth import AudibleLoginError
+    from .sources.audible_auth import audible_login as run_login
+
+    console.print("Opening a browser. Log in to Amazon/Audible, then return here.", style="cyan")
+    try:
+        path = run_login(marketplace)
+    except AudibleLoginError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    console.print(f"Saved Audible login to {path}", style="green")
+
+
 if __name__ == "__main__":
     app()

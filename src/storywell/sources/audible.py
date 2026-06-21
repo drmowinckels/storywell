@@ -83,13 +83,22 @@ def locate_auth_file(
             raise AuthFileNotFound(f"--auth-file does not exist: {explicit}")
         return explicit
 
+    # Prefer Storywell's own login (`storywell audible-login` / the desktop app) over an
+    # audible-cli setup, unless the caller explicitly targets one with --profile (or, in
+    # tests, config_dir). Real callers pass neither, so the in-app login wins by default.
+    if config_dir is None and profile is None:
+        from ..config import audible_auth_path
+
+        own_auth = audible_auth_path()
+        if own_auth.exists():
+            return own_auth
+
     config_dir = config_dir or DEFAULT_AUTH_DIR
     config_path = config_dir / DEFAULT_CONFIG_FILENAME
     if not config_path.exists():
         raise AuthFileNotFound(
-            f"No audible-cli config at {config_path}. "
-            "Run `pipx install audible-cli && audible quickstart` first, "
-            "or pass --auth-file."
+            f"No Audible login found. Run `storywell audible-login` (or use the desktop app), "
+            f"or set up audible-cli with `audible quickstart` — no config at {config_path}."
         )
     return _read_auth_file_from_config(config_path, profile)
 

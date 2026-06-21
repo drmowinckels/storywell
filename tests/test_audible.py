@@ -272,6 +272,25 @@ def test_locate_auth_file_raises_when_referenced_auth_missing(tmp_path):
         locate_auth_file(config_dir=tmp_path)
 
 
+def test_locate_auth_file_prefers_storywell_login(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    own = tmp_path / "storywell" / "audible.json"
+    own.parent.mkdir(parents=True)
+    own.write_text("{}")
+    assert locate_auth_file() == own
+
+
+def test_locate_auth_file_explicit_profile_bypasses_storywell_login(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    own = tmp_path / "storywell" / "audible.json"
+    own.parent.mkdir(parents=True)
+    own.write_text("{}")
+    cli_dir = tmp_path / "clidir"
+    _write_config(cli_dir)
+    resolved = locate_auth_file(profile="audible", config_dir=cli_dir)
+    assert resolved == (cli_dir / "audible.json").resolve()
+
+
 class _FakeClient:
     def __init__(self, pages):
         self.pages = list(pages)

@@ -24,3 +24,16 @@ def test_ensure_config_dir_creates_with_secure_mode(monkeypatch, tmp_path):
 def test_storygraph_state_path_under_config_dir(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
     assert config.storygraph_state_path() == (tmp_path / "storywell" / "storygraph-state.json")
+
+
+def test_audible_auth_path_under_config_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    assert config.audible_auth_path() == (tmp_path / "storywell" / "audible.json")
+
+
+def test_secure_file_sets_owner_only(tmp_path):
+    target = tmp_path / "secret.json"
+    target.write_text("{}")
+    target.chmod(0o644)
+    config.secure_file(target)
+    assert (target.stat().st_mode & 0o777) == 0o600
