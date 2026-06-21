@@ -138,6 +138,7 @@
           >Source
           <select id="source"></select
         ></label>
+        <button id="storygraph-login">Log in to StoryGraph</button>
         <button id="check">Check login</button>
         <button id="list">List finished</button>
         <button id="plan" class="primary">Dry-run plan</button>
@@ -177,8 +178,13 @@
 
       let browserReady = true;
 
-      // Check-login, dry-run plan, and Audible login all drive Chromium; List does not.
-      const BROWSER_BUTTONS = ["check", "plan", "audible-login"];
+      // Every action but List drives Chromium, so all are gated on it being installed.
+      const BROWSER_BUTTONS = [
+        "storygraph-login",
+        "check",
+        "plan",
+        "audible-login",
+      ];
       const BUTTONS = ["list", ...BROWSER_BUTTONS];
 
       function applyBrowserGate() {
@@ -287,13 +293,27 @@
       }
 
       const source = () => $("source").value;
+
+      // Both logins follow the same shape: open a browser, sign in, persist the session.
+      async function browserLogin(method, opening, done, ...args) {
+        setStatus(opening);
+        const path = await call(method, ...args);
+        if (path) setStatus(done);
+      }
+
+      $("storygraph-login").onclick = () =>
+        browserLogin(
+          "storygraph_login",
+          "Opening StoryGraph login in a browser — sign in there, then return.",
+          "StoryGraph login saved. You're ready to sync.",
+        );
       $("check").onclick = async () => {
         const ok = await call("login_state");
         if (ok !== null)
           setStatus(
             ok
               ? "StoryGraph session is active."
-              : "No active StoryGraph session — run storygraph-login.",
+              : "No active StoryGraph session — use “Log in to StoryGraph”.",
             !ok,
           );
       };
@@ -308,16 +328,13 @@
         const data = await call("sync_plan", source());
         if (data) renderPlan(data);
       };
-      $("audible-login").onclick = async () => {
-        setStatus(
+      $("audible-login").onclick = () =>
+        browserLogin(
+          "audible_login",
           "Opening Amazon login in a browser — sign in there, then return.",
+          "Audible login saved. You can now List finished or Dry-run plan.",
+          $("marketplace").value,
         );
-        const path = await call("audible_login", $("marketplace").value);
-        if (path)
-          setStatus(
-            "Audible login saved. You can now List finished or Dry-run plan.",
-          );
-      };
 
       if (window.pywebview?.api) init();
       else window.addEventListener("pywebviewready", init);

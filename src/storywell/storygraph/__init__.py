@@ -7,6 +7,7 @@ from .session import (
     StorygraphDependencyError,
     is_authenticated,
     login,
+    wait_until_signed_in,
 )
 from .store import SyncStore
 from .sync import (
@@ -58,4 +59,5 @@ __all__ = [
     "run_title_sync",
     "summarize",
     "target_shelf",
+    "wait_until_signed_in",
 ]

@@ -145,3 +145,10 @@ def audible_login(marketplace: str) -> str:
     from .sources.audible_auth import audible_login as _audible_login
 
     return str(_audible_login(marketplace))
+
+
+def storygraph_login() -> str:
+    """Log in to StoryGraph in a browser (no terminal) and return the saved session path."""
+    from .storygraph import login, wait_until_signed_in
+
+    return str(login(wait_for_user=wait_until_signed_in))

@@ -114,3 +114,8 @@ def test_api_install_browser_envelope(monkeypatch):
 def test_api_audible_login_envelope(monkeypatch):
     monkeypatch.setattr(bridge.service, "audible_login", lambda mp: f"/cfg/{mp}.json")
     assert Api().audible_login("us") == {"ok": True, "value": "/cfg/us.json"}
+
+
+def test_api_storygraph_login_envelope(monkeypatch):
+    monkeypatch.setattr(bridge.service, "storygraph_login", lambda: "/cfg/storygraph-state.json")
+    assert Api().storygraph_login() == {"ok": True, "value": "/cfg/storygraph-state.json"}

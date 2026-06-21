@@ -14,6 +14,7 @@ from storywell.storygraph.session import (
     is_authenticated,
     login,
     raise_if_signed_out,
+    wait_until_signed_in,
 )
 
 
@@ -114,7 +115,7 @@ def test_login_saves_state_and_closes_browser(tmp_path):
     state = tmp_path / "state.json"
     page = _FakePage()
     factory = _FakeFactory(page)
-    result = login(state, playwright_factory=factory, wait_for_user=lambda: None)
+    result = login(state, playwright_factory=factory, wait_for_user=lambda page: None)
     assert result == state
     assert state.exists()
     assert factory.browser.closed is True
@@ -122,19 +123,20 @@ def test_login_saves_state_and_closes_browser(tmp_path):
     assert SIGN_IN_URL in page.goto_urls
 
 
-def test_login_calls_wait_for_user(tmp_path):
-    called = []
+def test_login_calls_wait_for_user_with_page(tmp_path):
+    seen = []
+    page = _FakePage()
     login(
         tmp_path / "state.json",
-        playwright_factory=_FakeFactory(_FakePage()),
-        wait_for_user=lambda: called.append(True),
+        playwright_factory=_FakeFactory(page),
+        wait_for_user=lambda p: seen.append(p),
     )
-    assert called == [True]
+    assert seen == [page]
 
 
 def test_login_secures_state_file_permissions(tmp_path):
     state = tmp_path / "state.json"
-    login(state, playwright_factory=_FakeFactory(_FakePage()), wait_for_user=lambda: None)
+    login(state, playwright_factory=_FakeFactory(_FakePage()), wait_for_user=lambda page: None)
     assert (state.stat().st_mode & 0o777) == 0o600
 
 
@@ -142,14 +144,42 @@ def test_login_raises_when_still_on_sign_in(tmp_path):
     page = _FakePage(url="https://app.thestorygraph.com/users/sign_in")
     factory = _FakeFactory(page)
     with pytest.raises(StorygraphAuthError, match="didn't complete"):
-        login(tmp_path / "state.json", playwright_factory=factory, wait_for_user=lambda: None)
+        login(tmp_path / "state.json", playwright_factory=factory, wait_for_user=lambda page: None)
     assert factory.browser.closed is True
 
 
 def test_login_raises_when_no_cookies(tmp_path):
     factory = _FakeFactory(_FakePage(), cookies=())
     with pytest.raises(StorygraphAuthError, match="didn't complete"):
-        login(tmp_path / "state.json", playwright_factory=factory, wait_for_user=lambda: None)
+        login(tmp_path / "state.json", playwright_factory=factory, wait_for_user=lambda page: None)
+
+
+class _SignInThenHome:
+    """A page that sits on the sign-in URL for ``polls`` ticks, then lands on the app home."""
+
+    def __init__(self, polls):
+        self._remaining = polls
+        self.timeouts = 0
+
+    @property
+    def url(self):
+        return SIGN_IN_URL if self._remaining > 0 else "https://app.thestorygraph.com/"
+
+    def wait_for_timeout(self, ms):
+        self.timeouts += 1
+        self._remaining -= 1
+
+
+def test_wait_until_signed_in_polls_until_off_sign_in():
+    page = _SignInThenHome(polls=3)
+    wait_until_signed_in(page, poll_ms=1)
+    assert page.timeouts == 3
+
+
+def test_wait_until_signed_in_returns_immediately_when_already_signed_in():
+    page = _SignInThenHome(polls=0)
+    wait_until_signed_in(page, poll_ms=1)
+    assert page.timeouts == 0
 
 
 def test_is_authenticated_false_when_no_state(tmp_path):
