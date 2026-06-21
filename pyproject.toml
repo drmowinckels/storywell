@@ -38,6 +38,9 @@ desktop = [
   "pywebview>=5.0",
   "playwright>=1.40",
 ]
+packaging = [
+  "briefcase>=0.3.20",
+]
 dev = [
   "pytest>=8.0",
   "pytest-cov>=5.0",
@@ -70,3 +73,68 @@ ignore = ["B008"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+# ---------------------------------------------------------------------------
+# Briefcase desktop packaging — per-OS installers (.dmg / .msi / AppImage).
+# Independent of the hatchling wheel build and of CI. Chromium is NOT bundled;
+# the app downloads it on first launch (see storywell.storygraph.provision).
+# Build/sign/notarize runbook: docs/packaging.md.
+# ---------------------------------------------------------------------------
+[tool.briefcase]
+project_name = "Storywell"
+bundle = "com.drmowinckels"
+version = "0.1.0a0"
+url = "https://github.com/drmowinckels/storywell"
+license = "MIT"
+license_files = ["LICENSE"]
+author = "Athanasia Monika Mowinckel"
+author_email = "a.m.mowinckel@psykologi.uio.no"
+
+[tool.briefcase.app.storywell]
+formal_name = "Storywell"
+description = "Sync finished books from Audible, Goodreads & more into The StoryGraph."
+long_description = """
+Storywell marks the books you've finished — across Audible, Goodreads, Kobo and more — as
+read on The StoryGraph, which has no public import API. The desktop app wraps the same sync
+engine as the CLI behind a window, and downloads the browser it needs on first launch, so no
+terminal is required.
+"""
+sources = ["src/storywell"]
+requires = [
+  "audible>=0.10.0",
+  "typer>=0.12",
+  "rich>=13.7",
+  "httpx>=0.27",
+  "jinja2>=3.1",
+  "playwright>=1.40",
+  "pywebview>=5.0",
+]
+
+[tool.briefcase.app.storywell.macOS]
+# Single-arch (host) build. A universal_build pulls binary-only wheels for both arches,
+# which fails on the Audible SDK's sdist-only `pbkdf2` dep — see docs/packaging.md.
+universal_build = false
+requires = [
+  "std-nslog>=1.0.0",
+]
+
+[tool.briefcase.app.storywell.windows]
+# pywebview drives the Edge WebView2 runtime, preinstalled on Windows 10/11. Its Windows
+# bindings (pythonnet) come in automatically when Briefcase pip-installs pywebview here.
+
+[tool.briefcase.app.storywell.linux]
+# Least-tested target: pywebview needs a GTK + WebKit2GTK backend. Package names vary by
+# distro (webkit2gtk 4.0 vs 4.1) — verify on yours. See docs/packaging.md.
+requires = [
+  "pygobject>=3.46",
+]
+system_requires = [
+  "libgirepository1.0-dev",
+  "libcairo2-dev",
+  "libpango1.0-dev",
+  "libwebkit2gtk-4.1-dev",
+]
+system_runtime_requires = [
+  "gir1.2-gtk-3.0",
+  "gir1.2-webkit2-4.1",
+]
