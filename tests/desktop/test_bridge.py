@@ -99,3 +99,13 @@ def test_api_sync_plan_returns_plan_and_summary(monkeypatch):
     assert res["ok"]
     assert res["value"]["summary"] == {"match": 1, "ambiguous": 0, "no_match": 0}
     assert res["value"]["plan"][0]["status"] == "match"
+
+
+def test_api_chromium_status_envelope(monkeypatch):
+    monkeypatch.setattr(bridge.service, "chromium_installed", lambda: True)
+    assert Api().chromium_status() == {"ok": True, "value": True}
+
+
+def test_api_install_browser_envelope(monkeypatch):
+    monkeypatch.setattr(bridge.service, "ensure_chromium", lambda: True)
+    assert Api().install_browser() == {"ok": True, "value": True}

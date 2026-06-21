@@ -98,6 +98,12 @@ class Api:
     def login_state(self) -> dict[str, Any]:
         return _envelope(lambda: service.login_state(headless=self.headless))
 
+    def chromium_status(self) -> dict[str, Any]:
+        return _envelope(service.chromium_installed)
+
+    def install_browser(self) -> dict[str, Any]:
+        return _envelope(service.ensure_chromium)
+
     def list_finished(self, source: str, threshold: float = 0.95) -> dict[str, Any]:
         return _envelope(
             lambda: [book_to_dict(b) for b in service.list_finished(source, threshold=threshold)]

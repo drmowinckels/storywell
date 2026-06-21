@@ -124,3 +124,17 @@ def login_state(*, headless: bool = True) -> bool:
     from .storygraph import is_authenticated
 
     return is_authenticated(headless=headless)
+
+
+def chromium_installed() -> bool:
+    """Return whether Playwright's Chromium is already downloaded."""
+    from .storygraph import chromium_installed as _chromium_installed
+
+    return _chromium_installed()
+
+
+def ensure_chromium() -> bool:
+    """Ensure Chromium is available, downloading it once if missing. Returns readiness."""
+    from .storygraph import ensure_chromium as _ensure_chromium
+
+    return _ensure_chromium()

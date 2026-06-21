@@ -822,6 +822,28 @@ def storygraph_login() -> None:
     console.print(f"Saved StoryGraph session to {path}", style="green")
 
 
+@app.command("storygraph-install")
+def storygraph_install() -> None:
+    """Download the Chromium browser StoryGraph sync needs (one-time, no terminal needed later)."""
+    from .storygraph import StorygraphDependencyError, chromium_installed, install_chromium
+
+    try:
+        if chromium_installed():
+            console.print("Chromium is already installed.", style="green")
+            return
+        console.print("Downloading Chromium (~150 MB); this can take a minute…", style="cyan")
+        ok = install_chromium()
+    except StorygraphDependencyError as err:
+        console.print(str(err), style="red")
+        raise typer.Exit(code=1) from err
+
+    if ok:
+        console.print("Chromium installed.", style="green")
+    else:
+        console.print("Chromium download failed. Check your connection and try again.", style="red")
+        raise typer.Exit(code=1)
+
+
 @app.command("storygraph-status")
 def storygraph_status() -> None:
     """Check whether a saved StoryGraph session is still logged in."""

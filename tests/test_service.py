@@ -111,3 +111,13 @@ def test_login_state_delegates_to_is_authenticated(monkeypatch):
     assert service.login_state() is True
     monkeypatch.setattr("storywell.storygraph.is_authenticated", lambda *a, **k: False)
     assert service.login_state() is False
+
+
+def test_chromium_installed_delegates(monkeypatch):
+    monkeypatch.setattr("storywell.storygraph.chromium_installed", lambda: True)
+    assert service.chromium_installed() is True
+
+
+def test_ensure_chromium_delegates(monkeypatch):
+    monkeypatch.setattr("storywell.storygraph.ensure_chromium", lambda: False)
+    assert service.ensure_chromium() is False
