@@ -38,19 +38,10 @@ def install_chromium(*, runner: Runner | None = None) -> bool:
     """Download Chromium via ``playwright install chromium``. Idempotent; returns success.
 
     Runs in the current interpreter so a packaged app uses its bundled Playwright rather
-    than whatever ``playwright`` might be on PATH.
+    than whatever ``playwright`` might be on PATH. Output is left to stream to the parent's
+    stdout/stderr (the terminal for the CLI, the app log for the packaged GUI) so a failed
+    download leaves a diagnosable trail instead of a bare ``False``.
     """
     run = runner or subprocess.run
-    result = run(list(INSTALL_COMMAND), capture_output=True, text=True)
+    result = run(list(INSTALL_COMMAND))
     return result.returncode == 0
-
-
-def ensure_chromium(
-    *,
-    playwright_factory: PlaywrightFactory | None = None,
-    runner: Runner | None = None,
-) -> bool:
-    """Ensure Chromium is available, downloading it once if missing. Returns readiness."""
-    if chromium_installed(playwright_factory=playwright_factory):
-        return True
-    return install_chromium(runner=runner)

@@ -118,6 +118,6 @@ def test_chromium_installed_delegates(monkeypatch):
     assert service.chromium_installed() is True
 
 
-def test_ensure_chromium_delegates(monkeypatch):
-    monkeypatch.setattr("storywell.storygraph.ensure_chromium", lambda: False)
-    assert service.ensure_chromium() is False
+def test_install_chromium_delegates(monkeypatch):
+    monkeypatch.setattr("storywell.storygraph.install_chromium", lambda: True)
+    assert service.install_chromium() is True

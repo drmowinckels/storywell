@@ -133,8 +133,8 @@ def chromium_installed() -> bool:
     return _chromium_installed()
 
 
-def ensure_chromium() -> bool:
-    """Ensure Chromium is available, downloading it once if missing. Returns readiness."""
-    from .storygraph import ensure_chromium as _ensure_chromium
+def install_chromium() -> bool:
+    """Download Playwright's Chromium. Idempotent; returns success."""
+    from .storygraph import install_chromium as _install_chromium
 
-    return _ensure_chromium()
+    return _install_chromium()

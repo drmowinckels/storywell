@@ -1,6 +1,6 @@
 from .dedup import identity_key, merge_duplicates
 from .matching import Candidate, MatchResult, MatchStatus, is_isbn, match_book
-from .provision import chromium_installed, ensure_chromium, install_chromium
+from .provision import chromium_installed, install_chromium
 from .session import (
     StorygraphAuthError,
     StorygraphBrowser,
@@ -40,7 +40,6 @@ __all__ = [
     "SyncStore",
     "TitleEntry",
     "chromium_installed",
-    "ensure_chromium",
     "identity_key",
     "install_chromium",
     "is_authenticated",

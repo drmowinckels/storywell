@@ -50,28 +50,3 @@ def test_install_chromium_runs_playwright_install_and_reports_success():
 
 def test_install_chromium_reports_failure_on_nonzero_exit():
     assert provision.install_chromium(runner=lambda cmd, **k: _Result(1)) is False
-
-
-def test_ensure_chromium_skips_install_when_already_present(tmp_path):
-    exe = tmp_path / "chrome"
-    exe.write_text("")
-    installed = []
-
-    def runner(cmd, **k):
-        installed.append(cmd)
-        return _Result(0)
-
-    assert provision.ensure_chromium(playwright_factory=_factory(exe), runner=runner) is True
-    assert installed == []
-
-
-def test_ensure_chromium_installs_when_missing(tmp_path):
-    installed = []
-
-    def runner(cmd, **k):
-        installed.append(cmd)
-        return _Result(0)
-
-    ok = provision.ensure_chromium(playwright_factory=_factory(tmp_path / "absent"), runner=runner)
-    assert ok is True
-    assert installed and installed[0][1:] == ["-m", "playwright", "install", "chromium"]

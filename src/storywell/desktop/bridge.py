@@ -102,7 +102,9 @@ class Api:
         return _envelope(service.chromium_installed)
 
     def install_browser(self) -> dict[str, Any]:
-        return _envelope(service.ensure_chromium)
+        # The UI only calls this after chromium_status reported missing, so install
+        # directly rather than re-checking (which would spin up the driver again).
+        return _envelope(service.install_chromium)
 
     def list_finished(self, source: str, threshold: float = 0.95) -> dict[str, Any]:
         return _envelope(

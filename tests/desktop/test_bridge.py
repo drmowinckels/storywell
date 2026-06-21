@@ -107,5 +107,5 @@ def test_api_chromium_status_envelope(monkeypatch):
 
 
 def test_api_install_browser_envelope(monkeypatch):
-    monkeypatch.setattr(bridge.service, "ensure_chromium", lambda: True)
+    monkeypatch.setattr(bridge.service, "install_chromium", lambda: True)
     assert Api().install_browser() == {"ok": True, "value": True}
