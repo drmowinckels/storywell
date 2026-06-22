@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Storywell</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fbf7f0;
+        --fg: #2c2622;
+        --muted: #6b5f54;
+        --accent: #8a5a2b;
+        --card: #fffdf9;
+        --line: #e6ddd0;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1c1916;
+          --fg: #ece4d8;
+          --muted: #a99b8a;
+          --accent: #d2a06a;
+          --card: #262019;
+          --line: #3a3128;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          16px/1.5 system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      header {
+        padding: 1.5rem 2rem 0.5rem;
+      }
+      h1 {
+        margin: 0;
+        font-size: 1.4rem;
+      }
+      .sub {
+        color: var(--muted);
+        margin: 0.25rem 0 0;
+        font-size: 0.9rem;
+      }
+      main {
+        padding: 1rem 2rem 2rem;
+      }
+      .controls {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 1rem;
+      }
+      select,
+      button {
+        font: inherit;
+        padding: 0.5rem 0.85rem;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--card);
+        color: var(--fg);
+      }
+      button {
+        cursor: pointer;
+      }
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: transparent;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: progress;
+      }
+      #status {
+        margin: 0 0 1rem;
+        min-height: 1.4em;
+        color: var(--muted);
+      }
+      #status.error {
+        color: #c0392b;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: var(--card);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--line);
+        font-size: 0.9rem;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .pill {
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+      }
+      .match {
+        background: #2e7d3222;
+        color: #2e7d32;
+      }
+      .ambiguous {
+        background: #f9a82522;
+        color: #b8860b;
+      }
+      .no_match {
+        background: #c0392b22;
+        color: #c0392b;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Storywell</h1>
+      <p class="sub">
+        Mark the books you've finished as read on The StoryGraph.
+      </p>
+    </header>
+    <main>
+      <div class="controls">
+        <label
+          >Source
+          <select id="source"></select
+        ></label>
+        <button id="check">Check login</button>
+        <button id="list">List finished</button>
+        <button id="plan" class="primary">Dry-run plan</button>
+      </div>
+      <p id="status">Loading sources…</p>
+      <div id="results"></div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const api = () => window.pywebview && window.pywebview.api;
+
+      function setStatus(text, isError = false) {
+        const el = $("status");
+        el.textContent = text;
+        el.classList.toggle("error", isError);
+      }
+
+      function busy(on) {
+        for (const id of ["check", "list", "plan"]) $(id).disabled = on;
+      }
+
+      async function call(method, ...args) {
+        busy(true);
+        try {
+          const res = await api()[method](...args);
+          if (!res.ok) {
+            setStatus(res.error || "Something went wrong.", true);
+            return null;
+          }
+          return res.value;
+        } catch (err) {
+          setStatus(String(err), true);
+          return null;
+        } finally {
+          busy(false);
+        }
+      }
+
+      function renderBooks(books) {
+        if (!books.length)
+          return setStatus("No finished books found from this source.");
+        setStatus(`${books.length} finished book(s).`);
+        $("results").innerHTML =
+          "<table><thead><tr><th>Title</th><th>Author</th><th>%</th><th>Finished</th></tr></thead><tbody>" +
+          books
+            .map(
+              (b) =>
+                `<tr><td>${esc(b.title)}</td><td>${esc(b.authors.join(", "))}</td>` +
+                `<td>${b.percentComplete}</td><td>${b.finishedAt || "—"}</td></tr>`,
+            )
+            .join("") +
+          "</tbody></table>";
+      }
+
+      function renderPlan(data) {
+        const s = data.summary;
+        setStatus(
+          `match: ${s.match || 0} · ambiguous: ${s.ambiguous || 0} · no match: ${s.no_match || 0}`,
+        );
+        $("results").innerHTML =
+          "<table><thead><tr><th>Source title</th><th>Status</th><th>StoryGraph match</th><th>Score</th></tr></thead><tbody>" +
+          data.plan
+            .map(
+              (p) =>
+                `<tr><td>${esc(p.title)}</td>` +
+                `<td><span class="pill ${p.status}">${p.status}</span></td>` +
+                `<td>${esc(p.match || "—")}</td><td>${p.score ?? "—"}</td></tr>`,
+            )
+            .join("") +
+          "</tbody></table>";
+      }
+
+      function esc(s) {
+        return String(s).replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      }
+
+      async function init() {
+        const sources = await call("sources");
+        if (!sources) return;
+        $("source").innerHTML = sources
+          .map((s) => `<option>${s}</option>`)
+          .join("");
+        setStatus("Ready.");
+      }
+
+      const source = () => $("source").value;
+      $("check").onclick = async () => {
+        const ok = await call("login_state");
+        if (ok !== null)
+          setStatus(
+            ok
+              ? "StoryGraph session is active."
+              : "No active StoryGraph session — run storygraph-login.",
+            !ok,
+          );
+      };
+      $("list").onclick = async () => {
+        const books = await call("list_finished", source());
+        if (books) renderBooks(books);
+      };
+      $("plan").onclick = async () => {
+        setStatus(
+          "Matching against StoryGraph… this opens a browser in the background.",
+        );
+        const data = await call("sync_plan", source());
+        if (data) renderPlan(data);
+      };
+
+      if (window.pywebview?.api) init();
+      else window.addEventListener("pywebviewready", init);
+    </script>
+  </body>
+</html>
