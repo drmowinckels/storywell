@@ -46,7 +46,7 @@ python -m pip install -e ".[storygraph]"
 StoryGraph write-back drives a real browser, so install Playwright's Chromium once:
 
 ```sh
-playwright install chromium
+storywell storygraph-install   # or, equivalently: playwright install chromium
 ```
 
 Then log in once — Storywell saves the session and reuses it:
@@ -63,6 +63,7 @@ storywell storygraph-login
 storywell sources                          # which vendors Storywell can read from
 storywell list                             # list finished books (default source: audible)
 storywell list --source goodreads -f export.csv
+storywell storygraph-install               # download the Chromium browser sync needs (one-time)
 storywell storygraph-login                 # log in to StoryGraph once (saves a session)
 storywell sync --dry-run                   # preview the StoryGraph match plan
 storywell sync                             # mark finished books as read (+ ratings/reviews)

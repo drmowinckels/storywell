@@ -156,8 +156,17 @@
         el.classList.toggle("error", isError);
       }
 
+      let browserReady = true;
+
+      function applyBrowserGate() {
+        // Check-login and dry-run plan drive Chromium; List does not.
+        $("check").disabled = !browserReady;
+        $("plan").disabled = !browserReady;
+      }
+
       function busy(on) {
         for (const id of ["check", "list", "plan"]) $(id).disabled = on;
+        if (!on) applyBrowserGate();
       }
 
       async function call(method, ...args) {
@@ -229,9 +238,31 @@
         const sources = await call("sources");
         if (!sources) return;
         $("source").innerHTML = sources
-          .map((s) => `<option>${s}</option>`)
+          .map((s) => `<option>${esc(s)}</option>`)
           .join("");
-        setStatus("Ready.");
+        await ensureBrowser();
+      }
+
+      async function ensureBrowser() {
+        const installed = await call("chromium_status");
+        if (installed === null) return; // status check itself failed; message already shown
+        if (installed) {
+          setStatus("Ready.");
+          return;
+        }
+        browserReady = false;
+        setStatus(
+          "One-time setup: downloading the browser Storywell needs (~150 MB). This can take a minute…",
+        );
+        const ready = await call("install_browser");
+        browserReady = ready === true;
+        applyBrowserGate();
+        setStatus(
+          browserReady
+            ? "Ready."
+            : "Couldn't download the browser. Check your connection and reopen Storywell.",
+          !browserReady,
+        );
       }
 
       const source = () => $("source").value;
