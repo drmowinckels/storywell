@@ -4,165 +4,468 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Storywell</title>
+    <!-- Same type as the website (Fraunces 600 · Newsreader 400/500 + italic · IBM Plex
+         Mono 400/500 — only the faces actually used). The app needs the network to sync,
+         so a CDN load is fine and serif/mono fallbacks cover offline. RELEASE TODO: self-host
+         these OFL fonts (web/fonts/) so the packaged app never calls Google — privacy/GDPR
+         + offline. See docs/packaging.md. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
     <style>
+      /* Storywell desktop — the website's identity, in a window. "Library at night"
+         (bottle-green + brass) is the default; "reading room" (putty) is the light
+         alternate. Tokens mirror site/_brand.yml, custom.scss and dark.scss. */
       :root {
-        color-scheme: light dark;
-        --bg: #fbf7f0;
-        --fg: #2c2622;
-        --muted: #6b5f54;
-        --accent: #8a5a2b;
-        --card: #fffdf9;
-        --line: #e6ddd0;
+        color-scheme: dark light;
+        --serif: "Fraunces", Georgia, serif;
+        --body: "Newsreader", Georgia, serif;
+        --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+        /* default = library at night (Storywell ships dark) */
+        --bg: #0f1d16;
+        --surface: #16271e;
+        --ink: #e9e2d1;
+        --head: #f0e9d8;
+        --brass: #d8b06a;
+        --brass-text: #d8b06a;
+        --ghost-fg: #e3dcc9;
+        --ghost-border: rgba(227, 220, 201, 0.4);
+        --line: rgba(233, 226, 209, 0.13);
+        --muted: rgba(233, 226, 209, 0.55);
+        --lead: rgba(233, 226, 209, 0.86);
+        --btn-fg: #15211a;
+        --error-fg: #ff9a8f;
+        --error-bg: rgba(255, 138, 128, 0.15);
+        --rail-top: #d8b06a;
+        --rail-bot: #8a5e2a;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.3);
+
+        --pill-match-fg: #8fbf9c;
+        --pill-match-bg: rgba(143, 191, 156, 0.14);
+        --pill-amb-fg: #d8b06a;
+        --pill-amb-bg: rgba(216, 176, 106, 0.14);
+        --pill-no-fg: #ff9a8f;
+        --pill-no-bg: rgba(255, 138, 128, 0.14);
       }
-      @media (prefers-color-scheme: dark) {
+      @media (prefers-color-scheme: light) {
         :root {
-          --bg: #1c1916;
-          --fg: #ece4d8;
-          --muted: #a99b8a;
-          --accent: #d2a06a;
-          --card: #262019;
-          --line: #3a3128;
+          /* reading room — the light alternate */
+          --bg: #e4ddcc;
+          --surface: #ece6d6;
+          --ink: #20221d;
+          --head: #20221d;
+          --brass: #9c6b34;
+          --brass-text: #6f4a20;
+          --ghost-fg: #0e3a39;
+          --ghost-border: rgba(14, 58, 57, 0.42);
+          --line: rgba(32, 34, 29, 0.12);
+          --muted: rgba(32, 34, 29, 0.56);
+          --lead: rgba(32, 34, 29, 0.82);
+          --btn-fg: #f3eddd;
+          --error-fg: #7b1f1f;
+          --error-bg: rgba(123, 59, 59, 0.16);
+          --rail-top: #b98a3e;
+          --rail-bot: #7c5526;
+          --shadow:
+            0 1px 2px rgba(32, 34, 29, 0.08), 0 8px 24px rgba(32, 34, 29, 0.07);
+
+          --pill-match-fg: #2f5d3c;
+          --pill-match-bg: rgba(47, 93, 60, 0.13);
+          --pill-amb-fg: #6f4a20;
+          --pill-amb-bg: rgba(156, 107, 52, 0.16);
+          --pill-no-fg: #7b1f1f;
+          --pill-no-bg: rgba(123, 59, 59, 0.14);
         }
       }
+
       * {
         box-sizing: border-box;
       }
       body {
         margin: 0;
-        font:
-          16px/1.5 system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
+        font: 1rem/1.55 var(--body);
         background: var(--bg);
-        color: var(--fg);
+        color: var(--ink);
+        -webkit-font-smoothing: antialiased;
       }
-      header {
-        padding: 1.5rem 2rem 0.5rem;
-      }
-      h1 {
+      .eyebrow {
         margin: 0;
-        font-size: 1.4rem;
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        font-weight: 500;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--brass-text);
       }
-      .sub {
-        color: var(--muted);
-        margin: 0.25rem 0 0;
-        font-size: 0.9rem;
+
+      /* ---- the cover: always the dark "library at night" band ---- */
+      .cover {
+        position: relative;
+        overflow: hidden;
+        padding: 1.9rem 2.2rem 1.6rem;
+        color: #e9e2d1;
+        background: linear-gradient(180deg, #18291f 0%, #0f1d16 100%);
+        border-bottom: 1px solid rgba(216, 176, 106, 0.38);
       }
-      main {
-        padding: 1rem 2rem 2rem;
+      .cover .eyebrow {
+        color: #d8b06a;
+      }
+      .mark {
+        display: block;
+        width: 88px;
+        height: auto;
+        margin-bottom: 0.7rem;
+      }
+      .wordmark {
+        margin: 0.3rem 0 0;
+        font-family: var(--serif);
+        font-optical-sizing: auto;
+        font-size: 2.3rem;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        line-height: 0.98;
+        color: #f0e9d8;
+      }
+      .lead {
+        margin: 0.55rem 0 0;
+        max-width: 60ch;
+        font-family: var(--body);
+        font-style: italic;
+        font-size: 1.08rem;
+        line-height: 1.45;
+        color: rgba(233, 226, 209, 0.86);
+      }
+      .rail {
+        position: absolute;
+        top: -8px;
+        right: 46px;
+        width: 14px;
+        height: 88px;
+        background: linear-gradient(
+          90deg,
+          var(--rail-bot),
+          var(--rail-top) 48%,
+          var(--rail-bot)
+        );
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
+        box-shadow: 0 2px 7px rgba(0, 0, 0, 0.4);
+      }
+
+      /* ---- the pages ---- */
+      .pages {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 1.5rem 2.2rem 2.4rem;
+      }
+      .leaf {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1.05rem 1.15rem 1.2rem;
+        margin-bottom: 1rem;
+        box-shadow: var(--shadow);
+      }
+      .leaf-title {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin: 0 0 0.85rem;
+        font-family: var(--mono);
+        font-size: 0.68rem;
+        font-weight: 500;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        color: var(--brass-text);
+      }
+      .leaf-title::before {
+        content: "";
+        width: 1.6rem;
+        height: 1px;
+        background: var(--brass);
+      }
+      .account-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+      }
+      .account-group[hidden] {
+        display: none;
       }
       .controls {
         display: flex;
-        gap: 0.75rem;
+        gap: 0.6rem;
         flex-wrap: wrap;
         align-items: center;
-        margin-bottom: 1rem;
       }
-      select,
-      button {
-        font: inherit;
-        padding: 0.5rem 0.85rem;
-        border-radius: 8px;
+      .field {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        font-weight: 500;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      select {
+        font: 0.92rem var(--body);
+        padding: 0.42rem 2rem 0.42rem 0.7rem;
+        border-radius: 9px;
         border: 1px solid var(--line);
-        background: var(--card);
-        color: var(--fg);
-      }
-      button {
+        background: var(--bg)
+          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23a98a52' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E")
+          no-repeat right 0.7rem center;
+        color: var(--ink);
+        -webkit-appearance: none;
+        appearance: none;
         cursor: pointer;
       }
-      button.primary {
-        background: var(--accent);
-        color: #fff;
+      .btn {
+        font: 0.95rem var(--body);
+        padding: 0.44rem 0.95rem;
+        border-radius: 9px;
+        border: 1px solid var(--ghost-border);
+        background: transparent;
+        color: var(--ghost-fg);
+        cursor: pointer;
+        transition:
+          border-color 0.15s ease,
+          background 0.15s ease,
+          transform 0.05s ease;
+      }
+      .btn:hover {
+        border-color: var(--brass);
+        background: color-mix(in srgb, var(--brass) 10%, transparent);
+      }
+      .btn:active {
+        transform: translateY(1px);
+      }
+      .btn.primary {
+        background: var(--brass);
+        color: var(--btn-fg);
+        border-color: transparent;
+        font-weight: 500;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.25),
+          var(--shadow);
+      }
+      .btn.primary:hover {
+        background: color-mix(in srgb, var(--brass) 90%, #fff);
         border-color: transparent;
       }
-      button:disabled {
-        opacity: 0.5;
-        cursor: progress;
+      .btn:disabled {
+        opacity: 0.42;
+        cursor: not-allowed;
+        border-color: var(--line);
+        background: transparent;
+        color: var(--ghost-fg);
+        transform: none;
       }
+      :focus-visible {
+        outline: 2px solid var(--brass);
+        outline-offset: 2px;
+      }
+
+      /* ---- status: a margin note ---- */
       #status {
-        margin: 0 0 1rem;
-        min-height: 1.4em;
+        margin: 0.4rem 0 1rem;
+        min-height: 1.5em;
+        padding-left: 0.9rem;
+        border-left: 2px solid var(--line);
+        font-family: var(--body);
+        font-style: italic;
+        font-size: 0.98rem;
         color: var(--muted);
       }
       #status.error {
-        color: #c0392b;
+        color: var(--error-fg);
+        border-left-color: var(--error-fg);
       }
+
+      /* ---- the reading ledger ---- */
       table {
         width: 100%;
         border-collapse: collapse;
-        background: var(--card);
-        border-radius: 8px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
         overflow: hidden;
+        box-shadow: var(--shadow);
+        font-variant-numeric: tabular-nums;
       }
       th,
       td {
         text-align: left;
-        padding: 0.5rem 0.75rem;
+        padding: 0.58rem 0.85rem;
         border-bottom: 1px solid var(--line);
-        font-size: 0.9rem;
+        font-size: 0.92rem;
       }
-      th {
-        color: var(--muted);
-        font-weight: 600;
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+      tbody tr:hover td {
+        background: color-mix(in srgb, var(--brass) 7%, transparent);
+      }
+      thead th {
+        font-family: var(--mono);
+        font-size: 0.64rem;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--brass-text);
+        border-bottom: 1px solid var(--brass);
+        background: color-mix(in srgb, var(--brass) 8%, transparent);
+      }
+      th:last-child,
+      td:last-child {
+        text-align: right;
+        font-family: var(--mono);
+        font-size: 0.82rem;
       }
       .pill {
-        padding: 0.1rem 0.5rem;
-        border-radius: 999px;
-        font-size: 0.8rem;
+        display: inline-block;
+        padding: 0.12rem 0.55rem;
+        border-radius: 5px;
+        font-family: var(--mono);
+        font-size: 0.66rem;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        border: 1px solid currentColor;
       }
       .match {
-        background: #2e7d3222;
-        color: #2e7d32;
+        color: var(--pill-match-fg);
+        background: var(--pill-match-bg);
       }
       .ambiguous {
-        background: #f9a82522;
-        color: #b8860b;
+        color: var(--pill-amb-fg);
+        background: var(--pill-amb-bg);
       }
       .no_match {
-        background: #c0392b22;
-        color: #c0392b;
+        color: var(--pill-no-fg);
+        background: var(--pill-no-bg);
+      }
+
+      @media (prefers-reduced-motion: no-preference) {
+        .rail {
+          animation: drop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        }
+        .mark,
+        .eyebrow,
+        .wordmark,
+        .lead,
+        .leaf {
+          animation: rise 0.55s ease both;
+        }
+        .eyebrow {
+          animation-delay: 0.04s;
+        }
+        .wordmark {
+          animation-delay: 0.08s;
+        }
+        .lead {
+          animation-delay: 0.12s;
+        }
+        .leaf:nth-of-type(1) {
+          animation-delay: 0.16s;
+        }
+        .leaf:nth-of-type(2) {
+          animation-delay: 0.2s;
+        }
+        @keyframes drop {
+          from {
+            transform: translateY(-110%);
+          }
+          to {
+            transform: translateY(0);
+          }
+        }
+        @keyframes rise {
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: none;
+          }
+        }
+      }
+
+      @media (max-width: 560px) {
+        .pages {
+          padding: 1.1rem 1.2rem 1.8rem;
+        }
+        .cover {
+          padding: 1.5rem 1.3rem 1.3rem;
+        }
+        .wordmark {
+          font-size: 1.9rem;
+        }
       }
     </style>
   </head>
   <body>
-    <header>
-      <h1>Storywell</h1>
-      <p class="sub">
-        Mark the books you've finished as read on The StoryGraph.
+    <header class="cover">
+      <span class="rail" aria-hidden="true"></span>
+      <img class="mark" src="submark-night.svg" alt="" />
+      <p class="eyebrow">Sync your shelf</p>
+      <h1 class="wordmark">Storywell</h1>
+      <p class="lead">
+        A quiet well of every book you've finished — pulled from Audible,
+        Goodreads &amp; more, and marked read on The StoryGraph.
       </p>
     </header>
-    <main>
-      <div class="controls">
-        <label
-          >Source
-          <select id="source"></select
-        ></label>
-        <button id="storygraph-login">Log in to StoryGraph</button>
-        <button id="check">Check login</button>
-        <button id="list">List finished</button>
-        <button id="plan" class="primary">Dry-run plan</button>
-      </div>
-      <div class="controls">
-        <label
-          >Audible marketplace
-          <select id="marketplace">
-            <option value="us">us</option>
-            <option value="ca">ca</option>
-            <option value="uk">uk</option>
-            <option value="au">au</option>
-            <option value="fr">fr</option>
-            <option value="de">de</option>
-            <option value="jp">jp</option>
-            <option value="it">it</option>
-            <option value="in">in</option>
-            <option value="es">es</option>
-            <option value="br">br</option>
-          </select></label
-        >
-        <button id="audible-login">Log in to Audible</button>
-      </div>
-      <p id="status">Loading sources…</p>
+    <main class="pages">
+      <section class="leaf">
+        <h2 class="leaf-title">StoryGraph</h2>
+        <div class="controls">
+          <button id="storygraph-login" class="btn">
+            Log in to StoryGraph
+          </button>
+          <button id="check" class="btn">Check login</button>
+        </div>
+      </section>
+
+      <section class="leaf">
+        <h2 class="leaf-title">Finished books</h2>
+        <div class="controls">
+          <label class="field"
+            >Source
+            <select id="source"></select
+          ></label>
+          <!-- Per-source setup: only the selected source's controls are shown.
+               Audible is the only one wired today; file/token sources slot in here. -->
+          <span id="setup-audible" class="account-group" hidden>
+            <label class="field"
+              >Audible
+              <select id="marketplace">
+                <option value="us">us</option>
+                <option value="ca">ca</option>
+                <option value="uk">uk</option>
+                <option value="au">au</option>
+                <option value="fr">fr</option>
+                <option value="de">de</option>
+                <option value="jp">jp</option>
+                <option value="it">it</option>
+                <option value="in">in</option>
+                <option value="es">es</option>
+                <option value="br">br</option>
+              </select></label
+            >
+            <button id="audible-login" class="btn">Log in to Audible</button>
+          </span>
+          <button id="list" class="btn">List finished</button>
+          <button id="plan" class="btn primary">Dry-run plan</button>
+        </div>
+      </section>
+
+      <p id="status">Opening your reading record…</p>
       <div id="results"></div>
     </main>
 
@@ -240,7 +543,7 @@
             .map(
               (p) =>
                 `<tr><td>${esc(p.title)}</td>` +
-                `<td><span class="pill ${p.status}">${p.status}</span></td>` +
+                `<td><span class="pill ${p.status}">${p.status.replace("_", " ")}</span></td>` +
                 `<td>${esc(p.match || "—")}</td><td>${p.score ?? "—"}</td></tr>`,
             )
             .join("") +
@@ -267,6 +570,8 @@
         $("source").innerHTML = sources
           .map((s) => `<option>${esc(s)}</option>`)
           .join("");
+        if (sources.includes("audible")) $("source").value = "audible";
+        updateSourceUI();
         await ensureBrowser();
       }
 
@@ -274,7 +579,7 @@
         const installed = await call("chromium_status");
         if (installed === null) return; // status check itself failed; message already shown
         if (installed) {
-          setStatus("Ready.");
+          setStatus("Ready when you are.");
           return;
         }
         browserReady = false;
@@ -286,13 +591,22 @@
         applyBrowserGate();
         setStatus(
           browserReady
-            ? "Ready."
+            ? "Ready when you are."
             : "Couldn't download the browser. Check your connection and reopen Storywell.",
           !browserReady,
         );
       }
 
       const source = () => $("source").value;
+
+      // Each source reveals its own setup (Audible login here; file/token sources later).
+      const SOURCE_SETUP = { audible: "setup-audible" };
+      function updateSourceUI() {
+        const wanted = SOURCE_SETUP[source()];
+        for (const id of Object.values(SOURCE_SETUP))
+          $(id).hidden = id !== wanted;
+      }
+      $("source").onchange = updateSourceUI;
 
       // Both logins follow the same shape: open a browser, sign in, persist the session.
       async function browserLogin(method, opening, done, ...args) {
