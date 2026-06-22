@@ -15,9 +15,11 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .. import service
+from ..models import Shelf
 
 
 @dataclass
@@ -84,6 +86,39 @@ def plan_item_to_dict(item: Any) -> dict[str, Any]:
     }
 
 
+def source_kwargs(options: dict[str, Any] | None) -> dict[str, Any]:
+    """Translate the UI's per-source options into ``service.list_finished`` keyword args.
+
+    The web UI sends a plain object; only the keys a given source needs are populated
+    (``path`` for file sources, ``token`` for Hardcover/Literal, ``readColumn`` for Calibre,
+    ``shelf`` for catalogue sources like LibraryThing). Keys map to ``service.list_finished``.
+    """
+    opts = options or {}
+    path = opts.get("path")
+    shelf = opts.get("shelf")
+    return {
+        "threshold": opts.get("threshold", 0.95),
+        "path": Path(path) if path else None,
+        "token": opts.get("token") or None,
+        "read_column": opts.get("readColumn") or None,
+        "shelf": Shelf(shelf) if shelf else None,
+    }
+
+
+def open_file_dialog() -> str | None:
+    """Open the OS file picker and return the chosen path, or None if cancelled.
+
+    The native dialog is a pywebview/UI capability JS can't reach directly, so the bridge
+    is the only place to expose it. Imported lazily so the bridge stays testable without
+    pywebview; not unit-tested (it needs a real window).
+    """
+    import webview
+
+    window = webview.windows[0]
+    result = window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False)
+    return result[0] if result else None
+
+
 @dataclass
 class Api:
     """Engine methods exposed to the web UI. Each returns a JSON-able envelope."""
@@ -112,14 +147,17 @@ class Api:
     def storygraph_login(self) -> dict[str, Any]:
         return _envelope(service.storygraph_login)
 
-    def list_finished(self, source: str, threshold: float = 0.95) -> dict[str, Any]:
+    def list_finished(self, source: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
+        # source_kwargs runs inside the worker so a bad option surfaces as an error envelope.
         return _envelope(
-            lambda: [book_to_dict(b) for b in service.list_finished(source, threshold=threshold)]
+            lambda: [
+                book_to_dict(b) for b in service.list_finished(source, **source_kwargs(options))
+            ]
         )
 
-    def sync_plan(self, source: str, threshold: float = 0.95) -> dict[str, Any]:
+    def sync_plan(self, source: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         def work() -> dict[str, Any]:
-            books = service.list_finished(source, threshold=threshold)
+            books = service.list_finished(source, **source_kwargs(options))
             items = service.build_sync_plan(books, headless=self.headless)
             return {
                 "plan": [plan_item_to_dict(i) for i in items],
@@ -127,3 +165,12 @@ class Api:
             }
 
         return _envelope(work)
+
+    def choose_file(self) -> dict[str, Any]:
+        # The native file picker is a UI-thread operation pywebview marshals itself, so it
+        # runs directly here (not via run_off_thread) and JS can only reach it through this
+        # bridge method.
+        try:
+            return {"ok": True, "value": open_file_dialog()}
+        except Exception as err:  # noqa: BLE001 - surfaced to the UI as a message
+            return {"ok": False, "error": str(err), "errorType": type(err).__name__}
