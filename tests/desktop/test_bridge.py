@@ -109,3 +109,8 @@ def test_api_chromium_status_envelope(monkeypatch):
 def test_api_install_browser_envelope(monkeypatch):
     monkeypatch.setattr(bridge.service, "install_chromium", lambda: True)
     assert Api().install_browser() == {"ok": True, "value": True}
+
+
+def test_api_audible_login_envelope(monkeypatch):
+    monkeypatch.setattr(bridge.service, "audible_login", lambda mp: f"/cfg/{mp}.json")
+    assert Api().audible_login("us") == {"ok": True, "value": "/cfg/us.json"}

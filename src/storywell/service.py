@@ -138,3 +138,10 @@ def install_chromium() -> bool:
     from .storygraph import install_chromium as _install_chromium
 
     return _install_chromium()
+
+
+def audible_login(marketplace: str) -> str:
+    """Run an external Amazon login for ``marketplace`` and return the saved auth-file path."""
+    from .sources.audible_auth import audible_login as _audible_login
+
+    return str(_audible_login(marketplace))

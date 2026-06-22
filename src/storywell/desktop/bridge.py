@@ -106,6 +106,9 @@ class Api:
         # directly rather than re-checking (which would spin up the driver again).
         return _envelope(service.install_chromium)
 
+    def audible_login(self, marketplace: str) -> dict[str, Any]:
+        return _envelope(lambda: service.audible_login(marketplace))
+
     def list_finished(self, source: str, threshold: float = 0.95) -> dict[str, Any]:
         return _envelope(
             lambda: [book_to_dict(b) for b in service.list_finished(source, threshold=threshold)]

@@ -7,6 +7,7 @@ from pathlib import Path
 APP_DIR_NAME = "storywell"
 STORYGRAPH_STATE_FILENAME = "storygraph-state.json"
 SYNC_STORE_FILENAME = "sync-store.json"
+AUDIBLE_AUTH_FILENAME = "audible.json"
 
 
 def config_dir() -> Path:
@@ -29,3 +30,14 @@ def storygraph_state_path() -> Path:
 
 def sync_store_path() -> Path:
     return config_dir() / SYNC_STORE_FILENAME
+
+
+def audible_auth_path() -> Path:
+    """Storywell's own Audible auth file (written by the in-app/CLI login)."""
+    return config_dir() / AUDIBLE_AUTH_FILENAME
+
+
+def secure_file(path: Path) -> None:
+    """Best-effort tighten a credential file to owner-only (0600)."""
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)

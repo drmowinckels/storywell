@@ -121,3 +121,12 @@ def test_chromium_installed_delegates(monkeypatch):
 def test_install_chromium_delegates(monkeypatch):
     monkeypatch.setattr("storywell.storygraph.install_chromium", lambda: True)
     assert service.install_chromium() is True
+
+
+def test_audible_login_delegates_and_stringifies(monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr(
+        "storywell.sources.audible_auth.audible_login", lambda mp: Path("/cfg") / f"{mp}.json"
+    )
+    assert service.audible_login("us") == str(Path("/cfg") / "us.json")

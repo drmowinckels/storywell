@@ -142,6 +142,25 @@
         <button id="list">List finished</button>
         <button id="plan" class="primary">Dry-run plan</button>
       </div>
+      <div class="controls">
+        <label
+          >Audible marketplace
+          <select id="marketplace">
+            <option value="us">us</option>
+            <option value="ca">ca</option>
+            <option value="uk">uk</option>
+            <option value="au">au</option>
+            <option value="fr">fr</option>
+            <option value="de">de</option>
+            <option value="jp">jp</option>
+            <option value="it">it</option>
+            <option value="in">in</option>
+            <option value="es">es</option>
+            <option value="br">br</option>
+          </select></label
+        >
+        <button id="audible-login">Log in to Audible</button>
+      </div>
       <p id="status">Loading sources…</p>
       <div id="results"></div>
     </main>
@@ -158,14 +177,16 @@
 
       let browserReady = true;
 
+      // Check-login, dry-run plan, and Audible login all drive Chromium; List does not.
+      const BROWSER_BUTTONS = ["check", "plan", "audible-login"];
+      const BUTTONS = ["list", ...BROWSER_BUTTONS];
+
       function applyBrowserGate() {
-        // Check-login and dry-run plan drive Chromium; List does not.
-        $("check").disabled = !browserReady;
-        $("plan").disabled = !browserReady;
+        for (const id of BROWSER_BUTTONS) $(id).disabled = !browserReady;
       }
 
       function busy(on) {
-        for (const id of ["check", "list", "plan"]) $(id).disabled = on;
+        for (const id of BUTTONS) $(id).disabled = on;
         if (!on) applyBrowserGate();
       }
 
@@ -286,6 +307,16 @@
         );
         const data = await call("sync_plan", source());
         if (data) renderPlan(data);
+      };
+      $("audible-login").onclick = async () => {
+        setStatus(
+          "Opening Amazon login in a browser — sign in there, then return.",
+        );
+        const path = await call("audible_login", $("marketplace").value);
+        if (path)
+          setStatus(
+            "Audible login saved. You can now List finished or Dry-run plan.",
+          );
       };
 
       if (window.pywebview?.api) init();

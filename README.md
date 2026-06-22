@@ -63,6 +63,7 @@ storywell storygraph-login
 storywell sources                          # which vendors Storywell can read from
 storywell list                             # list finished books (default source: audible)
 storywell list --source goodreads -f export.csv
+storywell audible-login                    # log in to Audible in a browser (no audible-cli needed)
 storywell storygraph-install               # download the Chromium browser sync needs (one-time)
 storywell storygraph-login                 # log in to StoryGraph once (saves a session)
 storywell sync --dry-run                   # preview the StoryGraph match plan
@@ -101,7 +102,7 @@ The full command and flag reference lives in the [docs](https://drmowinckels.git
 
 | Source         | Format | Input                                                                              | Flags                                                           |
 | -------------- | ------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `audible`      | audio  | `audible-cli` registration (`audible quickstart`)                                  | `--auth-file`, `--profile`                                      |
+| `audible`      | audio  | `storywell audible-login` (or audible-cli's `audible quickstart`)                  | `--auth-file`, `--profile`                                      |
 | `applebooks`   | ebook  | on-device `BKLibrary*.sqlite` (macOS, auto-detected)                               | `--file`                                                        |
 | `bookwyrm`     | mixed  | CSV export (Settings → Export)                                                     | `--file`                                                        |
 | `calibre`      | mixed  | local Calibre library `metadata.db`                                                | `--file`, `--read-column`                                       |
