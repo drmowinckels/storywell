@@ -4,17 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Storywell</title>
-    <!-- Same type as the website (Fraunces 600 · Newsreader 400/500 + italic · IBM Plex
-         Mono 400/500 — only the faces actually used). The app needs the network to sync,
-         so a CDN load is fine and serif/mono fallbacks cover offline. RELEASE TODO: self-host
-         these OFL fonts (web/fonts/) so the packaged app never calls Google — privacy/GDPR
-         + offline. See docs/packaging.md. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=IBM+Plex+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <!-- The website's type (Fraunces · Newsreader · IBM Plex Mono), self-hosted from
+         fonts/ so the packaged app never calls Google (privacy/GDPR + offline). OFL,
+         latin + latin-ext; system serif/mono cover the rest. Regenerate: docs/packaging.md. -->
+    <link rel="stylesheet" href="fonts/fonts.css" />
     <style>
       /* Storywell desktop — the website's identity, in a window. "Library at night"
          (bottle-green + brass) is the default; "reading room" (putty) is the light
