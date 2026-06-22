@@ -108,6 +108,12 @@ AppImages are not signed; distribute the file (and optionally a `.zsync` for upd
   untested. An arm64-only `.dmg` will not run on Intel Macs without Rosetta.
 - **Signing/notarization unverified** — config and the unsigned build are confirmed; the
   signed path needs your certificates and a real desktop session.
+- **Self-host the brand fonts before public release.** The desktop UI currently loads
+  Fraunces / Newsreader / IBM Plex Mono from the Google Fonts CDN (same as the website),
+  so a packaged app calls Google on every launch — an IP/privacy leak (GDPR-relevant for an
+  EU audience) and a network dependency. All three are OFL-licensed, so bundle the `latin`
+  subset `woff2` under `src/storywell/desktop/web/fonts/` with local `@font-face` and drop the
+  CDN `<link>` in `web/index.html`. Offline rendering already falls back to system serif/mono.
 - **App icon** — no `.icns`/`.ico`/`.png` icon set is wired up yet; Briefcase uses a default.
   Add `icon = "..."` under `[tool.briefcase.app.storywell]` once assets exist.
 - **Auto-update** — not configured.

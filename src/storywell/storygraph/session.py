@@ -11,7 +11,7 @@ SIGN_IN_URL = f"{BASE_URL}/users/sign_in"
 SIGN_IN_PATH = "/users/sign_in"
 
 PlaywrightFactory = Callable[[], Any]
-WaitForUser = Callable[[], None]
+WaitForUser = Callable[[Any], None]
 
 
 class StorygraphDependencyError(RuntimeError):
@@ -57,11 +57,24 @@ def _is_signed_in(url: str) -> bool:
     return SIGN_IN_PATH not in url
 
 
-def _default_wait_for_user() -> None:
+def _default_wait_for_user(page: Any) -> None:
     input(
         "\nA browser window has opened on the StoryGraph sign-in page.\n"
         "Log in there (email/password, 2FA, Cloudflare), then return here and press Enter... "
     )
+
+
+def wait_until_signed_in(page: Any, *, poll_ms: int = 600) -> None:
+    """Block until the browser leaves the sign-in page — the no-terminal login completion.
+
+    The CLI waits on Enter; a GUI has no terminal, so it polls the URL instead, reusing the
+    ``is_authenticated`` heuristic (anywhere but ``/users/sign_in`` counts as signed in). This
+    is a *single-step* heuristic: a login that routes through a separate-URL 2FA or Cloudflare
+    page can satisfy it before login truly completes, so verify your account's flow. Closing the
+    browser raises (login aborted); leaving it open without finishing waits indefinitely.
+    """
+    while not _is_signed_in(page.url):
+        page.wait_for_timeout(poll_ms)
 
 
 def login(
@@ -72,9 +85,10 @@ def login(
 ) -> Path:
     """Open a headed browser, wait for a manual StoryGraph login, persist the session.
 
-    The user logs in by hand (handling 2FA and Cloudflare) and presses Enter when done;
-    we never touch their password. The storage state (cookies) is written to ``state_path``.
-    Detection is by Enter + a sign-in-redirect check, not by a fragile DOM selector.
+    The user logs in by hand (handling 2FA and Cloudflare); we never touch their password.
+    ``wait_for_user(page)`` decides when login is done — the CLI default waits on Enter, the
+    GUI passes :func:`wait_until_signed_in` to poll the URL instead. The storage state
+    (cookies) is then written to ``state_path``, guarded by a sign-in-redirect check.
     """
     state_path = state_path or storygraph_state_path()
     ensure_config_dir()
@@ -87,7 +101,7 @@ def login(
             context = browser.new_context()
             page = context.new_page()
             page.goto(SIGN_IN_URL)
-            wait()
+            wait(page)
             state = context.storage_state(path=str(state_path))
             final_url = page.url
         finally:

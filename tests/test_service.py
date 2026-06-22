@@ -130,3 +130,19 @@ def test_audible_login_delegates_and_stringifies(monkeypatch):
         "storywell.sources.audible_auth.audible_login", lambda mp: Path("/cfg") / f"{mp}.json"
     )
     assert service.audible_login("us") == str(Path("/cfg") / "us.json")
+
+
+def test_storygraph_login_delegates_with_url_polling(monkeypatch):
+    from pathlib import Path
+
+    from storywell.storygraph import wait_until_signed_in
+
+    captured = {}
+
+    def fake_login(*, wait_for_user):
+        captured["wait_for_user"] = wait_for_user
+        return Path("/cfg/storygraph-state.json")
+
+    monkeypatch.setattr("storywell.storygraph.login", fake_login)
+    assert service.storygraph_login() == str(Path("/cfg/storygraph-state.json"))
+    assert captured["wait_for_user"] is wait_until_signed_in

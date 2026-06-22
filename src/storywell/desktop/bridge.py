@@ -109,6 +109,9 @@ class Api:
     def audible_login(self, marketplace: str) -> dict[str, Any]:
         return _envelope(lambda: service.audible_login(marketplace))
 
+    def storygraph_login(self) -> dict[str, Any]:
+        return _envelope(service.storygraph_login)
+
     def list_finished(self, source: str, threshold: float = 0.95) -> dict[str, Any]:
         return _envelope(
             lambda: [book_to_dict(b) for b in service.list_finished(source, threshold=threshold)]
