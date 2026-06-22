@@ -225,6 +225,28 @@
         appearance: none;
         cursor: pointer;
       }
+      input[type="text"],
+      input[type="password"] {
+        font: 0.92rem var(--body);
+        padding: 0.42rem 0.7rem;
+        border-radius: 9px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--ink);
+        width: 13rem;
+      }
+      input::placeholder {
+        color: var(--muted);
+      }
+      .filename {
+        max-width: 18rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
       .btn {
         font: 0.95rem var(--body);
         padding: 0.44rem 0.95rem;
@@ -439,8 +461,9 @@
             >Source
             <select id="source"></select
           ></label>
-          <!-- Per-source setup: only the selected source's controls are shown.
-               Audible is the only one wired today; file/token sources slot in here. -->
+          <!-- Per-source setup: only the selected source's inputs are shown
+               (see SOURCE_NEEDS). Audible logs in; file sources pick an export
+               file; Hardcover/Literal take a token; Calibre adds a read column. -->
           <span id="setup-audible" class="account-group" hidden>
             <label class="field"
               >Audible
@@ -459,6 +482,37 @@
               </select></label
             >
             <button id="audible-login" class="btn">Log in to Audible</button>
+          </span>
+          <span id="setup-file" class="account-group" hidden>
+            <button id="choose-file" class="btn">Choose export file…</button>
+            <span id="file-name" class="filename"></span>
+          </span>
+          <span id="setup-readcolumn" class="account-group" hidden>
+            <label class="field"
+              >Read column
+              <input
+                id="readcolumn-input"
+                type="text"
+                placeholder="e.g. #read"
+              />
+            </label>
+          </span>
+          <span id="setup-token" class="account-group" hidden>
+            <label class="field"
+              >API token
+              <input id="token-input" type="password" autocomplete="off" />
+            </label>
+          </span>
+          <span id="setup-shelf" class="account-group" hidden>
+            <label class="field"
+              >Shelf
+              <select id="shelf-input">
+                <option value="read">read</option>
+                <option value="currently-reading">currently-reading</option>
+                <option value="to-read">to-read</option>
+                <option value="did-not-finish">did-not-finish</option>
+              </select></label
+            >
           </span>
           <button id="list" class="btn">List finished</button>
           <button id="plan" class="btn primary">Dry-run plan</button>
@@ -481,22 +535,33 @@
 
       let browserReady = true;
 
-      // Every action but List drives Chromium, so all are gated on it being installed.
+      // Every action but List/Choose-file drives Chromium, so those are gated on it.
       const BROWSER_BUTTONS = [
         "storygraph-login",
         "check",
         "plan",
         "audible-login",
       ];
-      const BUTTONS = ["list", ...BROWSER_BUTTONS];
+      const BUTTONS = ["list", "choose-file", ...BROWSER_BUTTONS];
 
-      function applyBrowserGate() {
+      // A file source can't List/Plan until its export file is chosen.
+      function fileMissing() {
+        return (
+          (SOURCE_NEEDS[source()] || []).includes("setup-file") && !chosenFile
+        );
+      }
+
+      function applyGates() {
+        const noFile = fileMissing();
         for (const id of BROWSER_BUTTONS) $(id).disabled = !browserReady;
+        $("plan").disabled = !browserReady || noFile;
+        $("list").disabled = noFile;
+        $("choose-file").disabled = false;
       }
 
       function busy(on) {
         for (const id of BUTTONS) $(id).disabled = on;
-        if (!on) applyBrowserGate();
+        if (!on) applyGates();
       }
 
       async function call(method, ...args) {
@@ -588,7 +653,7 @@
         );
         const ready = await call("install_browser");
         browserReady = ready === true;
-        applyBrowserGate();
+        applyGates();
         setStatus(
           browserReady
             ? "Ready when you are."
@@ -598,15 +663,63 @@
       }
 
       const source = () => $("source").value;
+      let chosenFile = null;
 
-      // Each source reveals its own setup (Audible login here; file/token sources later).
-      const SOURCE_SETUP = { audible: "setup-audible" };
+      // Each source reveals only the inputs it needs: Audible logs in; file sources
+      // pick an export file; Hardcover/Literal take a token; Calibre adds a read column;
+      // LibraryThing (a catalogue, no finished signal) needs a target shelf.
+      // Keep this in sync with the source constructors in src/storywell/sources/*.py.
+      const SETUP_GROUPS = [
+        "setup-audible",
+        "setup-file",
+        "setup-readcolumn",
+        "setup-token",
+        "setup-shelf",
+      ];
+      const SOURCE_NEEDS = {
+        audible: ["setup-audible"],
+        hardcover: ["setup-token"],
+        literal: ["setup-token"],
+        calibre: ["setup-file", "setup-readcolumn"],
+        librarything: ["setup-file", "setup-shelf"],
+        applebooks: ["setup-file"],
+        goodreads: ["setup-file"],
+        kobo: ["setup-file"],
+        bookwyrm: ["setup-file"],
+        libby: ["setup-file"],
+        kindle: ["setup-file"],
+      };
+
       function updateSourceUI() {
-        const wanted = SOURCE_SETUP[source()];
-        for (const id of Object.values(SOURCE_SETUP))
-          $(id).hidden = id !== wanted;
+        const needs = SOURCE_NEEDS[source()] || [];
+        for (const id of SETUP_GROUPS) $(id).hidden = !needs.includes(id);
+        // inputs from one source never carry to another
+        chosenFile = null;
+        $("file-name").textContent = "";
+        $("token-input").value = "";
+        $("readcolumn-input").value = "";
+        applyGates();
       }
       $("source").onchange = updateSourceUI;
+
+      // Gather the selected source's inputs; the engine ignores any it doesn't use.
+      function sourceOptions() {
+        return {
+          path: chosenFile,
+          token: $("token-input").value || null,
+          readColumn: $("readcolumn-input").value || null,
+          shelf: $("shelf-input").value || null,
+        };
+      }
+
+      $("choose-file").onclick = async () => {
+        const path = await call("choose_file");
+        if (path) {
+          chosenFile = path;
+          $("file-name").textContent = path.split(/[\\/]/).pop();
+          applyGates();
+        }
+      };
 
       // Both logins follow the same shape: open a browser, sign in, persist the session.
       async function browserLogin(method, opening, done, ...args) {
@@ -632,14 +745,14 @@
           );
       };
       $("list").onclick = async () => {
-        const books = await call("list_finished", source());
+        const books = await call("list_finished", source(), sourceOptions());
         if (books) renderBooks(books);
       };
       $("plan").onclick = async () => {
         setStatus(
           "Matching against StoryGraph… this opens a browser in the background.",
         );
-        const data = await call("sync_plan", source());
+        const data = await call("sync_plan", source(), sourceOptions());
         if (data) renderPlan(data);
       };
       $("audible-login").onclick = () =>

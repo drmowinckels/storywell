@@ -1,9 +1,16 @@
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 
 from storywell.desktop import bridge
-from storywell.desktop.bridge import Api, book_to_dict, plan_item_to_dict, run_off_thread
-from storywell.models import SourceBook
+from storywell.desktop.bridge import (
+    Api,
+    book_to_dict,
+    plan_item_to_dict,
+    run_off_thread,
+    source_kwargs,
+)
+from storywell.models import Shelf, SourceBook
 from storywell.storygraph import plan_sync
 from storywell.storygraph.matching import Candidate
 
@@ -119,3 +126,70 @@ def test_api_audible_login_envelope(monkeypatch):
 def test_api_storygraph_login_envelope(monkeypatch):
     monkeypatch.setattr(bridge.service, "storygraph_login", lambda: "/cfg/storygraph-state.json")
     assert Api().storygraph_login() == {"ok": True, "value": "/cfg/storygraph-state.json"}
+
+
+def test_source_kwargs_maps_ui_options():
+    assert source_kwargs(
+        {"path": "/x/export.csv", "token": "tok", "readColumn": "#read", "shelf": "read"}
+    ) == {
+        "threshold": 0.95,
+        "path": Path("/x/export.csv"),
+        "token": "tok",
+        "read_column": "#read",
+        "shelf": Shelf.READ,
+    }
+
+
+def test_source_kwargs_defaults_when_empty():
+    assert source_kwargs(None) == {
+        "threshold": 0.95,
+        "path": None,
+        "token": None,
+        "read_column": None,
+        "shelf": None,
+    }
+    # empty strings from untouched inputs collapse to None, not ""
+    assert source_kwargs({"path": "", "token": "", "readColumn": "", "shelf": ""})["token"] is None
+
+
+def test_api_list_finished_threads_options(monkeypatch):
+    captured = {}
+
+    def fake(source, **kwargs):
+        captured["source"] = source
+        captured["kwargs"] = kwargs
+        return [_book()]
+
+    monkeypatch.setattr(bridge.service, "list_finished", fake)
+    Api().list_finished("goodreads", {"path": "/x/export.csv"})
+    assert captured["source"] == "goodreads"
+    assert captured["kwargs"]["path"] == Path("/x/export.csv")
+    assert captured["kwargs"]["token"] is None
+
+
+def test_api_sync_plan_threads_options(monkeypatch):
+    captured = {}
+
+    def fake_list(source, **kwargs):
+        captured["kwargs"] = kwargs
+        return [_book()]
+
+    monkeypatch.setattr(bridge.service, "list_finished", fake_list)
+    monkeypatch.setattr(bridge.service, "build_sync_plan", lambda books, **k: [])
+    monkeypatch.setattr(bridge.service, "summarize_plan", lambda its: {})
+    Api().sync_plan("hardcover", {"token": "abc"})
+    assert captured["kwargs"]["token"] == "abc"
+
+
+def test_api_choose_file_envelope(monkeypatch):
+    monkeypatch.setattr(bridge, "open_file_dialog", lambda: "/picked/library.csv")
+    assert Api().choose_file() == {"ok": True, "value": "/picked/library.csv"}
+
+
+def test_api_choose_file_surfaces_errors(monkeypatch):
+    def boom():
+        raise RuntimeError("no window")
+
+    monkeypatch.setattr(bridge, "open_file_dialog", boom)
+    res = Api().choose_file()
+    assert res == {"ok": False, "error": "no window", "errorType": "RuntimeError"}
