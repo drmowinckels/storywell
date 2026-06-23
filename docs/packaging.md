@@ -23,6 +23,22 @@ That keeps the installer small and sidesteps Briefcase resource-bundling of brow
 The download happens once; later launches reuse it. The same code powers
 `storywell storygraph-install` for source installs.
 
+## The engine runs in a spawned subprocess (why `freeze_support` matters)
+
+All Playwright work runs in a **separate worker process**, never in the GUI process — see
+`storywell.desktop.engine`. This is mandatory on macOS: once pywebview initialises the
+Cocoa/Objective-C runtime on the main thread, any `fork()` in that process (and Playwright
+launches its driver by forking) leaves the child wedged, which silently deadlocks the GUI.
+A `multiprocessing` worker started with the **spawn** method gets a clean interpreter, so
+Playwright's fork is safe there.
+
+For packaging this means the worker **re-launches the app executable** to bootstrap itself.
+`storywell.desktop.__main__` calls `multiprocessing.freeze_support()` before `main()` so the
+frozen (Briefcase) executable, when re-invoked as a spawn child, runs the worker instead of
+opening a second window. **Verify after any packaging change:** launch the bundle, run a
+Dry-run plan, and confirm a single window plus a short-lived `chrome-headless-shell` — not a
+second app window. If a second window appears, the freeze-support re-exec is misconfigured.
+
 ## Prerequisites
 
 ```sh

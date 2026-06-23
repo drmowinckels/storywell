@@ -286,20 +286,124 @@
         outline-offset: 2px;
       }
 
-      /* ---- status: a margin note ---- */
-      #status {
-        margin: 0.4rem 0 1rem;
-        min-height: 1.5em;
-        padding-left: 0.9rem;
-        border-left: 2px solid var(--line);
-        font-family: var(--body);
-        font-style: italic;
-        font-size: 0.98rem;
+      /* ---- signed-in chip ---- */
+      /* Once a session is saved the "Log in" button is replaced by this, so the
+         account reads as connected rather than inviting an endless re-login. */
+      .signed-in {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.55rem;
+      }
+      .signed-in[hidden] {
+        display: none;
+      }
+      .signed-in__mark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font: 500 0.9rem var(--body);
+        color: var(--ink);
+      }
+      .signed-in__mark::before {
+        content: "✓";
+        color: var(--brass-text);
+        font-weight: 600;
+      }
+      .btn.link {
+        padding: 0.2rem 0.4rem;
+        border-color: transparent;
         color: var(--muted);
+        font-size: 0.85rem;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .btn.link:hover {
+        color: var(--brass-text);
+        background: transparent;
+        border-color: transparent;
+      }
+
+      /* ---- status: a margin note ---- */
+      /* The status line is the app's voice — it must be the most legible thing on the
+         page, not a dim aside, so a result (e.g. "session is active") is never missed. */
+      #status {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        margin: 0.6rem 0 1.1rem;
+        min-height: 1.5em;
+        padding: 0.6rem 0.9rem;
+        border-left: 3px solid var(--brass);
+        border-radius: 0 8px 8px 0;
+        background: color-mix(in srgb, var(--brass) 9%, transparent);
+        font-family: var(--body);
+        font-size: 1.02rem;
+        color: var(--ink);
       }
       #status.error {
         color: var(--error-fg);
         border-left-color: var(--error-fg);
+        background: var(--error-bg);
+      }
+
+      /* ---- a book turning its pages: the "working" loader ---- */
+      .book-loader {
+        position: relative;
+        flex: 0 0 auto;
+        width: 30px;
+        height: 20px;
+        perspective: 260px;
+      }
+      .book-loader[hidden] {
+        display: none;
+      }
+      .book-loader::before {
+        /* the open book: two covers meeting at a centre spine */
+        content: "";
+        position: absolute;
+        inset: 0;
+        border: 1.5px solid var(--brass);
+        border-radius: 2px;
+        background: linear-gradient(var(--brass), var(--brass)) 50% / 1.5px 100%
+          no-repeat;
+      }
+      .book-loader__page {
+        position: absolute;
+        top: 2.5px;
+        left: 50%;
+        width: 12px;
+        height: 15px;
+        transform-origin: left center;
+        background: linear-gradient(
+          to right,
+          color-mix(in srgb, var(--brass) 70%, var(--surface)),
+          color-mix(in srgb, var(--brass) 40%, var(--surface))
+        );
+        border: 1px solid var(--brass);
+        border-radius: 1px 2px 2px 1px;
+        animation: book-page 1.5s infinite ease-in-out;
+      }
+      .book-loader__page:nth-child(2) {
+        animation-delay: 0.3s;
+      }
+      .book-loader__page:nth-child(3) {
+        animation-delay: 0.6s;
+      }
+      @keyframes book-page {
+        0%,
+        12% {
+          transform: rotateY(0);
+        }
+        88%,
+        100% {
+          transform: rotateY(-180deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .book-loader__page {
+          animation: none;
+          opacity: 0.7;
+        }
       }
 
       /* ---- the reading ledger ---- */
@@ -443,6 +547,10 @@
           <button id="storygraph-login" class="btn">
             Log in to StoryGraph
           </button>
+          <span id="storygraph-status" class="signed-in" hidden>
+            <span class="signed-in__mark">Signed in to StoryGraph</span>
+            <button id="storygraph-logout" class="btn link">Log out</button>
+          </span>
           <button id="check" class="btn">Check login</button>
         </div>
       </section>
@@ -475,6 +583,10 @@
               </select></label
             >
             <button id="audible-login" class="btn">Log in to Audible</button>
+            <span id="audible-status" class="signed-in" hidden>
+              <span class="signed-in__mark">Signed in to Audible</span>
+              <button id="audible-logout" class="btn link">Log out</button>
+            </span>
           </span>
           <span id="setup-file" class="account-group" hidden>
             <button id="choose-file" class="btn">Choose export file…</button>
@@ -512,7 +624,14 @@
         </div>
       </section>
 
-      <p id="status">Opening your reading record…</p>
+      <div id="status">
+        <span class="book-loader" id="status-loader" aria-hidden="true" hidden>
+          <span class="book-loader__page"></span>
+          <span class="book-loader__page"></span>
+          <span class="book-loader__page"></span>
+        </span>
+        <span id="status-text">Opening your reading record…</span>
+      </div>
       <div id="results"></div>
     </main>
 
@@ -522,8 +641,47 @@
 
       function setStatus(text, isError = false) {
         const el = $("status");
-        el.textContent = text;
+        $("status-text").textContent = text;
         el.classList.toggle("error", isError);
+        // a brief gold pulse so an update is noticed, even when the wording is calm
+        if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          el.animate(
+            [
+              { boxShadow: "0 0 0 3px rgba(216, 176, 106, 0.55)" },
+              { boxShadow: "0 0 0 3px rgba(216, 176, 106, 0)" },
+            ],
+            { duration: 700, easing: "ease-out" },
+          );
+        }
+      }
+
+      // Update the status wording without the gold pulse — for the rapid progress ticks,
+      // where a pulse every poll would be noise rather than signal.
+      function setProgressText(text) {
+        $("status-text").textContent = text;
+      }
+
+      // While a long job runs (sync_plan searches StoryGraph per book), poll the engine's
+      // [done, total] and show a live counter so it never looks frozen. Returns a stopper.
+      function pollProgress() {
+        let stopped = false;
+        let timer = null;
+        const tick = async () => {
+          const res = await api().progress();
+          // A poll in flight when we stop must NOT overwrite the final summary that
+          // renderPlan just wrote — bail if the stopper fired during the await.
+          if (stopped) return;
+          if (res && res.ok && res.value.total)
+            setProgressText(
+              `Searching StoryGraph — ${res.value.done} of ${res.value.total} books matched…`,
+            );
+          if (!stopped) timer = setTimeout(tick, 700); // self-reschedule: no tick pile-up
+        };
+        timer = setTimeout(tick, 700);
+        return () => {
+          stopped = true;
+          clearTimeout(timer);
+        };
       }
 
       let browserReady = true;
@@ -535,7 +693,44 @@
         "plan",
         "audible-login",
       ];
-      const BUTTONS = ["list", "choose-file", ...BROWSER_BUTTONS];
+      // Log-out just deletes a local credential file — no browser — so it isn't gated on
+      // browserReady, but it is in BUTTONS so it's disabled while another action runs.
+      const LOGOUT_BUTTONS = ["storygraph-logout", "audible-logout"];
+      const BUTTONS = [
+        "list",
+        "choose-file",
+        ...BROWSER_BUTTONS,
+        ...LOGOUT_BUTTONS,
+      ];
+
+      // The two account logins, each toggling its "Log in" button against a signed-in chip.
+      const LOGINS = {
+        storygraph: {
+          loginBtn: "storygraph-login",
+          chip: "storygraph-status",
+          logoutBtn: "storygraph-logout",
+          label: "StoryGraph",
+        },
+        audible: {
+          loginBtn: "audible-login",
+          chip: "audible-status",
+          logoutBtn: "audible-logout",
+          label: "Audible",
+        },
+      };
+      // Mirrors which credential files exist on disk. StoryGraph is reconciled against the
+      // live session by "Check login"; Audible is presence-only (no cheap liveness check),
+      // so a session revoked out-of-band shows as signed-in until the next launch.
+      let savedLogins = { storygraph: false, audible: false };
+
+      // Reflect saved-credential state: a connected account hides its "Log in" button and
+      // shows the signed-in chip (with Log out) instead, so re-login isn't an open invitation.
+      function renderLoginState() {
+        for (const [name, cfg] of Object.entries(LOGINS)) {
+          $(cfg.loginBtn).hidden = savedLogins[name];
+          $(cfg.chip).hidden = !savedLogins[name];
+        }
+      }
 
       // A file source can't List/Plan until its export file is chosen.
       function fileMissing() {
@@ -554,6 +749,7 @@
 
       function busy(on) {
         for (const id of BUTTONS) $(id).disabled = on;
+        $("status-loader").hidden = !on; // the book turns its pages while work runs
         if (!on) applyGates();
       }
 
@@ -630,6 +826,9 @@
           .join("");
         if (sources.includes("audible")) $("source").value = "audible";
         updateSourceUI();
+        const logins = await call("saved_logins");
+        if (logins) savedLogins = logins;
+        renderLoginState();
         await ensureBrowser();
       }
 
@@ -715,27 +914,48 @@
       };
 
       // Both logins follow the same shape: open a browser, sign in, persist the session.
-      async function browserLogin(method, opening, done, ...args) {
+      // On success the saved-login state flips so the chip replaces the "Log in" button.
+      async function browserLogin(name, method, opening, done, ...args) {
         setStatus(opening);
         const path = await call(method, ...args);
-        if (path) setStatus(done);
+        if (path) {
+          savedLogins[name] = true;
+          renderLoginState();
+          setStatus(done);
+        }
+      }
+
+      // Log out: forget the saved credential, then restore the "Log in" button.
+      for (const [name, cfg] of Object.entries(LOGINS)) {
+        $(cfg.logoutBtn).onclick = async () => {
+          const ok = await call("forget_login", name);
+          if (ok) {
+            savedLogins[name] = false;
+            renderLoginState();
+            setStatus(`Logged out of ${cfg.label}.`);
+          }
+        };
       }
 
       $("storygraph-login").onclick = () =>
         browserLogin(
+          "storygraph",
           "storygraph_login",
           "Opening StoryGraph login in a browser — sign in there, then return.",
           "StoryGraph login saved. You're ready to sync.",
         );
       $("check").onclick = async () => {
         const ok = await call("login_state");
-        if (ok !== null)
-          setStatus(
-            ok
-              ? "StoryGraph session is active."
-              : "No active StoryGraph session — use “Log in to StoryGraph”.",
-            !ok,
-          );
+        if (ok === null) return; // the check itself failed; message already shown
+        // The live check is authoritative: a stale saved session reverts to "Log in".
+        savedLogins.storygraph = ok;
+        renderLoginState();
+        setStatus(
+          ok
+            ? "StoryGraph session is active."
+            : "Your StoryGraph session has expired — log in again.",
+          !ok,
+        );
       };
       $("list").onclick = async () => {
         const books = await call("list_finished", source(), sourceOptions());
@@ -743,18 +963,41 @@
       };
       $("plan").onclick = async () => {
         setStatus(
-          "Matching against StoryGraph… this opens a browser in the background.",
+          "Searching StoryGraph… opening a browser in the background. For a large library this can take a few minutes.",
         );
-        const data = await call("sync_plan", source(), sourceOptions());
-        if (data) renderPlan(data);
+        const stopPolling = pollProgress();
+        try {
+          const data = await call("sync_plan", source(), sourceOptions());
+          if (data) renderPlan(data);
+        } finally {
+          stopPolling();
+        }
       };
       $("audible-login").onclick = () =>
         browserLogin(
+          "audible",
           "audible_login",
           "Opening Amazon login in a browser — sign in there, then return.",
           "Audible login saved. You can now List finished or Dry-run plan.",
           $("marketplace").value,
         );
+
+      // Safety net: never fail silently. Any uncaught error surfaces in the status panel
+      // and the UI is un-stuck (loader hidden, buttons restored to their gated state).
+      function reportFatal(detail) {
+        try {
+          busy(false); // hide the loader, re-enable buttons, re-apply gates
+        } catch (_e) {
+          /* keep going — showing the message matters more */
+        }
+        setStatus("Something went wrong: " + (detail || "unknown error"), true);
+      }
+      window.addEventListener("error", (e) => reportFatal(e.message));
+      window.addEventListener("unhandledrejection", (e) =>
+        reportFatal(
+          e.reason && e.reason.message ? e.reason.message : String(e.reason),
+        ),
+      );
 
       if (window.pywebview?.api) init();
       else window.addEventListener("pywebviewready", init);
