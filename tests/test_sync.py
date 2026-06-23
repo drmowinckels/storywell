@@ -82,6 +82,16 @@ def test_plan_sync_passes_query_per_book():
     assert seen == ["A X", "B Y"]
 
 
+def test_plan_sync_reports_progress_per_book():
+    seen = []
+    plan_sync(
+        [_book("A", "X"), _book("B", "Y"), _book("C", "Z")],
+        lambda q: [],
+        on_progress=lambda done, total: seen.append((done, total)),
+    )
+    assert seen == [(1, 3), (2, 3), (3, 3)]
+
+
 def test_summarize_counts_each_status():
     items = [
         SyncPlanItem(_book("a"), _result(MatchStatus.MATCH)),

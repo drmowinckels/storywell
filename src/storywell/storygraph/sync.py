@@ -87,11 +87,24 @@ def match_for_book(book: SourceBook, search_fn: SearchFn) -> MatchResult:
     return match_book(book.title, author, search_fn(query_for(book)))
 
 
-def plan_sync(books: Iterable[SourceBook], search_fn: SearchFn) -> list[SyncPlanItem]:
+def plan_sync(
+    books: Iterable[SourceBook],
+    search_fn: SearchFn,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[SyncPlanItem]:
+    """Match each book against StoryGraph, reporting ``(done, total)`` after each if asked.
+
+    ``on_progress`` lets a caller surface live progress for what is otherwise a slow,
+    opaque per-book search loop (one StoryGraph query each).
+    """
+    books = list(books)
+    total = len(books)
     items: list[SyncPlanItem] = []
-    for book in books:
+    for done, book in enumerate(books, start=1):
         result = match_for_book(book, search_fn)
         items.append(SyncPlanItem(book, result))
+        if on_progress is not None:
+            on_progress(done, total)
     return items
 
 

@@ -38,12 +38,17 @@ def run(*, headless: bool = True, debug: bool = False) -> None:
     login or debugging.
     """
     webview = _load_webview()
+    api = Api(headless=headless)
     webview.create_window(
         WINDOW_TITLE,
         url=INDEX_HTML.resolve().as_uri(),
-        js_api=Api(headless=headless),
+        js_api=api,
         width=920,
         height=720,
         min_size=(640, 480),
     )
-    webview.start(debug=debug)
+    try:
+        webview.start(debug=debug)
+    finally:
+        # webview.start blocks until the window closes; tear the worker process down then.
+        api.engine.shutdown()

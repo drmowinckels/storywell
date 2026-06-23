@@ -99,17 +99,19 @@ def build_sync_plan(
     *,
     headless: bool = True,
     open_searcher: Callable[[], Any] | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> list[Any]:
     """Match each book against StoryGraph and return the match plan (no writes).
 
     Opens an authenticated session, searches per book, and returns ``SyncPlanItem``s.
-    ``open_searcher`` injects an alternative searcher context manager for testing.
+    ``open_searcher`` injects an alternative searcher context manager for testing;
+    ``on_progress`` receives ``(done, total)`` after each book for live UI feedback.
     """
     from .storygraph import plan_sync
 
     opener = open_searcher or (lambda: _open_searcher(headless=headless))
     with opener() as searcher:
-        return plan_sync(books, searcher.search)
+        return plan_sync(books, searcher.search, on_progress=on_progress)
 
 
 def summarize_plan(items: list[Any]) -> dict[str, int]:
@@ -124,6 +126,36 @@ def login_state(*, headless: bool = True) -> bool:
     from .storygraph import is_authenticated
 
     return is_authenticated(headless=headless)
+
+
+def saved_logins() -> dict[str, bool]:
+    """Return which services have a saved credential on disk — a cheap presence check.
+
+    Instant and offline: it only tests whether the credential file exists, unlike
+    :func:`login_state`, which launches a browser to confirm the StoryGraph session is
+    still live. The UI uses this to reflect logged-in state without a startup browser hit.
+    """
+    from .config import audible_auth_path, storygraph_state_path
+
+    return {
+        "storygraph": storygraph_state_path().exists(),
+        "audible": audible_auth_path().exists(),
+    }
+
+
+def forget_login(service_name: str) -> bool:
+    """Delete the saved credential for ``service_name`` ('storygraph' or 'audible').
+
+    Backs the UI's log-out / switch-account action. Idempotent — a missing file is a
+    no-op. Raises ``ValueError`` for an unknown service so a UI typo surfaces loudly.
+    """
+    from .config import audible_auth_path, storygraph_state_path
+
+    paths = {"storygraph": storygraph_state_path, "audible": audible_auth_path}
+    if service_name not in paths:
+        raise ValueError(f"unknown login: {service_name!r}")
+    paths[service_name]().unlink(missing_ok=True)
+    return True
 
 
 def chromium_installed() -> bool:
