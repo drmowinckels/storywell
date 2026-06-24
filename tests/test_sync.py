@@ -642,6 +642,27 @@ def test_run_review_sync_existing_storygraph_review_recorded_as_done(tmp_path):
     assert store.is_rated(book.key) is True
 
 
+def test_run_review_sync_skips_books_with_only_a_narrator_note(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book(rating=None, review=None, narrators=("Some Narrator",))
+    store.remember_match(book.key, "sg1")
+    rater = _FakeRater()
+    outcome = run_review_sync([book], rater=rater, store=store)
+    assert rater.calls == []  # a narrator note alone never publishes a public review
+    assert outcome.written == []
+    assert store.is_rated(book.key) is False
+
+
+def test_run_review_sync_writes_a_review_without_a_rating(tmp_path):
+    store = _store(tmp_path)
+    book = _rated_book(rating=None, review="a thoughtful review", narrators=())
+    store.remember_match(book.key, "sg1")
+    rater = _FakeRater()
+    outcome = run_review_sync([book], rater=rater, store=store)
+    assert outcome.written == [book.key]
+    assert rater.calls == [("sg1", "", "", "a thoughtful review")]
+
+
 def _editions_fn(mapping):
     return lambda book_id: mapping.get(book_id, [])
 

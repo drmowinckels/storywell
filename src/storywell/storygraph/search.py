@@ -17,6 +17,11 @@ from .editions import Edition, parse_editions, pick_edition, sg_formats_for
 from .matching import Candidate
 from .session import BASE_URL, PlaywrightFactory, _load_sync_playwright, raise_if_signed_out
 
+try:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+except ImportError:  # playwright is optional; search only runs when it is installed
+    PlaywrightTimeout = TimeoutError
+
 SEARCH_URL = f"{BASE_URL}/browse"
 RESULT_SELECTOR = ".book-pane"
 DESCRIPTION_SELECTOR = ".trix-content"
@@ -157,7 +162,7 @@ class StorygraphSearcher:
         raise_if_signed_out(self._page.url)
         try:
             self._page.wait_for_selector(RESULT_SELECTOR, timeout=RESULT_TIMEOUT_MS)
-        except Exception:
+        except PlaywrightTimeout:
             return []  # selector never appeared: genuinely no results (session checked above)
         candidates: list[Candidate] = []
         for element in self._page.query_selector_all(RESULT_SELECTOR):
@@ -174,7 +179,7 @@ class StorygraphSearcher:
         raise_if_signed_out(self._page.url)
         try:
             self._page.wait_for_selector(DESCRIPTION_SELECTOR, timeout=RESULT_TIMEOUT_MS)
-        except Exception:
+        except PlaywrightTimeout:
             return ""
         self._page.evaluate(_EXPAND_SHOW_MORE_JS)
         self._page.wait_for_timeout(300)

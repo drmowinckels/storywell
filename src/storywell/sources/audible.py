@@ -196,11 +196,20 @@ def parse_review(item: dict[str, Any]) -> str | None:
     return text or None
 
 
-def item_to_book(item: dict[str, Any]) -> SourceBook:
+def item_to_book(item: dict[str, Any]) -> SourceBook | None:
+    """Normalize one library item, or None if it has no ASIN to key on.
+
+    An item without an ``asin`` can't be matched, synced, or de-duplicated, so it is
+    dropped rather than allowed to crash the whole library read. ``title`` is coerced
+    defensively because Audible may send an explicit null.
+    """
+    asin = item.get("asin")
+    if not asin:
+        return None
     return SourceBook(
         source=SOURCE_NAME,
-        source_id=item.get("asin", ""),
-        title=item.get("title", "").strip(),
+        source_id=asin,
+        title=(item.get("title") or "").strip(),
         authors=parse_authors(item),
         narrators=parse_narrators(item),
         percent_complete=parse_percent_complete(item),
@@ -217,9 +226,9 @@ def filter_finished(items: Iterable[dict[str, Any]], threshold: float = 0.95) ->
     cutoff = threshold * 100.0
     finished: list[SourceBook] = []
     for raw in items:
-        if not raw.get("asin"):
-            continue  # no stable id to key the sync store on; can't sync it
         book = item_to_book(raw)
+        if book is None:
+            continue  # no ASIN to key the sync store on; can't sync it
         if book.is_finished or book.percent_complete >= cutoff:
             finished.append(book)
     return finished

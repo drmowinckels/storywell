@@ -1,4 +1,5 @@
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from storywell.storygraph import search
 from storywell.storygraph.search import (
@@ -55,7 +56,7 @@ class _FakePage:
 
     def wait_for_selector(self, selector, timeout=None):
         if not self._records:
-            raise TimeoutError("no results")
+            raise PlaywrightTimeout("no results")
         return object()
 
     def query_selector_all(self, _selector):
@@ -372,6 +373,16 @@ def test_search_returns_empty_when_no_results(tmp_path):
     page = _FakePage([])  # wait_for_selector times out -> no candidates
     with StorygraphSearcher(page=page) as searcher:
         assert searcher.search("nothing here") == []
+
+
+def test_search_propagates_non_timeout_errors():
+    class _CrashPage(_FakePage):
+        def wait_for_selector(self, selector, timeout=None):
+            raise RuntimeError("browser crashed")
+
+    page = _CrashPage([{"href": "/books/b1", "title": "T", "author": "A"}])
+    with StorygraphSearcher(page=page) as searcher, pytest.raises(RuntimeError):
+        searcher.search("anything")  # a real failure must surface, not look like "no results"
 
 
 def test_search_raises_when_session_expired():
